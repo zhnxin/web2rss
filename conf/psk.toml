@@ -1,0 +1,67 @@
+[Desc]
+Description = "品色客(Psk)一個專注於分享最新高清電影資源的磁力鏈平台"
+Generator = "https://www.psk9.cc"
+Image = "http://www.psk9.cc/wp-content/themes/psk/img/logo.png"
+Language = "zh-cn"
+Link = "https://www.psk9.cc"
+Title = "psk"
+Url = "https://www.psk9.cc"
+[Rule]
+ExtraSource = "{{.link}}"
+ItemSelector = "div.excerpts>article"
+Key = "link"
+TocUrl = "https://www.psk9.cc"
+[Rule.KeyParseConf]
+[Rule.KeyParseConf.link]
+Attr = "href"
+Regex = ""
+Selector = "a.thumbnail"
+[Rule.KeyParseConf.thumb]
+Attr = "data-src"
+Regex = ""
+Selector = "a.thumbnail>img"
+[Rule.KeyParseConf.title]
+Attr = ""
+Regex = ""
+Selector = "h2"
+[Rule.KeyParseConf.pid]
+Attr = "data-pid"
+Regex = ""
+Selector = "footer>a"
+[Rule.ExtraKeyParseConf]
+[Rule.ExtraKeyParseConf.putDateDay]
+Attr = "text"
+Regex = '([\d\-]+) '
+Selector = "span.item-1"
+[Rule.ExtraKeyParseConf.putDateTime]
+Attr = "text"
+Regex = ' ([\d:]+)'
+Selector = "span.item-1"
+[Rule.ExtraKeyParseConf.header]
+Attr = "html"
+Regex = ""
+Selector = "head"
+[Rule.ExtraKeyParseConf.title]
+Attr = ""
+Regex = ""
+Selector = "h1.article-title"
+[Rule.ExtraKeyParseConf.article]
+Attr = "html"
+Regex = ""
+Selector = "article.article-content"
+[Rule.TemplateConfig]
+Description = """
+<img src="{{.thumb}}">
+<br/>
+<header>
+{{.header}}
+</header>
+<article>
+{{.article}}
+</<article>
+"""
+Guid = ""
+Link = "{{.link}}"
+PubDate = "{{.putDateDay}}T{{.putDateTime}}:00Z"
+Thumbnail = "{{.thumb}}"
+Title = "{{.title}}"

@@ -47,7 +47,15 @@ Attr = "href"
 Regex = ""
 Selector = " div.xiazai > div.downbox > a:nth-child(1)"
 [Rule.TemplateConfig]
-Description = "<img src=\"{{.coverImage}}\"><br/><span>作者: </span><strong>{{.author}}</strong><h4>简介：</h4><br/><p>{{ .detail }}</p> <br/>"
+Description = """
+<img src="{{.coverImage}}">
+<br/>
+<span>作者: </span><strong>{{.author}}</strong>
+<h4>简介：</h4>
+<br/>
+<p>{{ .detail }}</p>
+<br/>
+"""
 Guid = ""
 Link = "{{.downLink}}"
 PubDate = "{{.date}}T00:00:00Z"

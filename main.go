@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
+	"os/user"
 	"path"
 	"strings"
 	"time"
@@ -19,7 +21,9 @@ import (
 var (
 	DATAFILE   = "data.db"
 	ServerAddr = kingpin.Flag("addr", "server addr").Default(":8080").String()
-	ConfigDir  = kingpin.Flag("config-dir", "config dir contain channel config toml").Default("./conf").Short('c').String()
+	ConfigDir  = kingpin.Flag("config-dir", "config dir contain channel config toml").Default("").Short('c').String()
+	CONF_DIR   = ".web2rss"
+	USER_DIR   string
 )
 
 type (
@@ -68,11 +72,23 @@ func init() {
 		FullTimestamp:   true,
 		TimestampFormat: time.RFC3339,
 	})
+	u, err := user.Current()
+	if err != nil {
+		panic("fail to read user dir")
+	}
+	USER_DIR = u.HomeDir
+	confPath := path.Join(USER_DIR, CONF_DIR)
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		err = os.Mkdir(confPath, 0755)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func main() {
 	kingpin.Parse()
-	engine, err := xorm.NewEngine("sqlite3", DATAFILE)
+	engine, err := xorm.NewEngine("sqlite3", path.Join(USER_DIR, CONF_DIR, DATAFILE))
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -82,7 +98,11 @@ func main() {
 	}
 	repository := newRepository(engine)
 	CONFIG := &Config{}
-	CONFIG.LoadConfig(*ConfigDir)
+	if *ConfigDir == "" {
+		CONFIG.LoadConfig(path.Join(USER_DIR, CONF_DIR, "conf"))
+	} else {
+		CONFIG.LoadConfig(*ConfigDir)
+	}
 	if err = CONFIG.Check(repository); err != nil {
 		logrus.Fatal(err)
 	}
@@ -96,6 +116,7 @@ func main() {
 			<-time.After(time.Hour)
 		}
 	}()
+	gin.SetMode("release")
 	route := gin.Default()
 	route.GET("/rss/:channel", func(ctx *gin.Context) {
 		channelName := ctx.Param("channel")

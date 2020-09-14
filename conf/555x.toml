@@ -1,0 +1,55 @@
+[Desc]
+Description = "无限小说网"
+Generator = "http://www.555x.org"
+Image = "https://www.555x.org/Public/txt/image/logo.gif"
+Language = "zh-cn"
+Link = "http://www.555x.org"
+Title = "555x"
+Url = "http://www.555x.org"
+
+[Rule]
+ExtraSource = "{{.link}}"
+ItemSelector = "div.xiashu>ul"
+Key = "link"
+TocUrl = "http://555x.org/shuku.html"
+[Rule.KeyParseConf]
+[Rule.KeyParseConf.author]
+Attr = ""
+Regex = ""
+Selector = "li.qq_r"
+[Rule.KeyParseConf.date]
+Attr = ""
+Regex = ""
+Selector = "li.qq_m"
+[Rule.KeyParseConf.desc]
+Attr = ""
+Regex = ""
+Selector = "li.qq_j"
+[Rule.KeyParseConf.link]
+Attr = "href"
+Regex = ""
+Selector = "li.qq_g>a"
+[Rule.KeyParseConf.title]
+Attr = ""
+Regex = "《(.*)》TXT下载"
+Selector = "li.qq_g>a"
+[Rule.ExtraKeyParseConf]
+[Rule.ExtraKeyParseConf.coverImage]
+Attr = "src"
+Regex = ""
+Selector = "div.xiazai > div.xinxi > div.neit > img"
+[Rule.ExtraKeyParseConf.detail]
+Attr = "html"
+Regex = ""
+Selector = "div.xiazai > div.zhangjie"
+[Rule.ExtraKeyParseConf.downLink]
+Attr = "href"
+Regex = ""
+Selector = " div.xiazai > div.downbox > a:nth-child(1)"
+[Rule.TemplateConfig]
+Description = "<img src=\"{{.coverImage}}\"><br/><span>作者: </span><strong>{{.author}}</strong><h4>简介：</h4><br/><p>{{ .detail }}</p> <br/>"
+Guid = ""
+Link = "{{.downLink}}"
+PubDate = "{{.date}}T00:00:00Z"
+Thumbnail = "{{.coverImage}}"
+Title = "{{.title}}"

@@ -41,6 +41,10 @@ var (
 </rss>`)
 )
 
+func SetProxy(proxy string) {
+	proxyUrl = proxy
+}
+
 type (
 	ChannelData struct {
 		Desc    FeedDesc
@@ -100,12 +104,12 @@ func (e *ElementSelector) getKey(s *goquery.Selection) string {
 	var text string
 	switch e.Attr {
 	case "html":
-		text, _ = s.Find(e.Selector).Html()
+		text, _ = s.Find(e.Selector).First().Html()
 	case "text", "":
-		text = s.Find(e.Selector).Text()
+		text = s.Find(e.Selector).First().Text()
 	default:
 		var isExists bool
-		text, isExists = s.Find(e.Selector).Attr(e.Attr)
+		text, isExists = s.Find(e.Selector).First().Attr(e.Attr)
 		if !isExists {
 			logrus.Error("element and atrr not found in extra page for ", e.Selector)
 		}
@@ -116,7 +120,7 @@ func (e *ElementSelector) getKey(s *goquery.Selection) string {
 			text = regexRes[1]
 		}
 	}
-	return text
+	return EncodeStrForXml(text)
 }
 func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 	res := []string{}
@@ -124,7 +128,7 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 	if e.Regex != "" {
 		regexP = regexp.MustCompile(e.Regex)
 	}
-	s.Find(e.Selector).Each(func(_ int, es *goquery.Selection) {
+	s.Find(e.Selector).Each(func(i int, es *goquery.Selection) {
 		var text string
 		switch e.Attr {
 		case "html":
@@ -145,7 +149,7 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 				text = regexRes[1]
 			}
 		}
-		res = append(res, text)
+		res = append(res, EncodeStrForXml(text))
 	})
 	switch len(res) {
 	case 0:
@@ -251,7 +255,7 @@ func (r *Rule) GenerateItem() ([]Item, error) {
 			itemEntity := Item{}
 			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 			if err != nil {
-				logrus.Error("decode item temp fail:%v:\n%s", err, tpl.String())
+				logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
 				return
 			}
 			itemEntity.Mk = fmt.Sprint(item[r.Key])

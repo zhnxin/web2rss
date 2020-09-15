@@ -41,6 +41,7 @@ type (
 		ConfigDir string
 		userDir   string
 		Period    int
+		HttpProxy string
 	}
 )
 
@@ -106,6 +107,7 @@ func init() {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:   true,
 		TimestampFormat: time.RFC3339,
+		ForceColors:     true,
 	})
 	u, err := user.Current()
 	if err != nil {
@@ -129,6 +131,7 @@ func init() {
 	BaseConf := kingpin.Flag("base-config", "base config").Default("").String()
 	kingpin.Parse()
 	BASE_CONF.LoadConfig(*BaseConf, *ServerAddr, *ConfigDir, *HttpToken)
+	SetProxy(BASE_CONF.HttpProxy)
 }
 
 func main() {
@@ -208,9 +211,11 @@ func main() {
 	go func() {
 		for {
 			for _, channel := range CONFIG.Channel {
-				if err := channel.Update(); err != nil {
-					logrus.Errorf("update item for %s:%v", channel.Desc.Title, err)
-				}
+				go func(c *ChannelConf) {
+					if err := c.Update(); err != nil {
+						logrus.Errorf("update item for %s:%v", c.Desc.Title, err)
+					}
+				}(channel)
 			}
 			select {
 			case <-updateChannel:

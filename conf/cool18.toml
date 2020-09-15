@@ -1,0 +1,53 @@
+ItemCount = 64
+[Desc]
+Description = "禁忌书屋"
+Generator = "https://www.cool18.com/bbs4"
+Language = "zh-cn"
+Link = "https://www.cool18.com/bbs4"
+Title = "cool18"
+Url = "https://www.cool18.com/bbs4"
+
+[Rule]
+ItemSelector = "div#d_list>ul>li"
+Key = "tid"
+TocUrl = "https://www.cool18.com/bbs4"
+[Rule.KeyParseConf]
+[Rule.KeyParseConf.dateM]
+Attr = ""
+Regex = '(\d+)/\d+/\d+'
+Selector = "i:first-of-type"
+[Rule.KeyParseConf.dateD]
+Attr = ""
+Regex = '\d+/(\d+)/\d+'
+Selector = "i:first-of-type"
+[Rule.KeyParseConf.dateY]
+Attr = ""
+Regex = '\d+/\d+/(\d+)'
+Selector = "i:first-of-type"
+[Rule.KeyParseConf.link]
+Attr = "href"
+Regex = ""
+Selector = "a:first-of-type"
+[Rule.KeyParseConf.views]
+Attr = ""
+Regex = ""
+Selector = "i+span"
+[Rule.KeyParseConf.title]
+Attr = ""
+Regex = ""
+Selector = "a:first-of-type"
+[Rule.KeyParseConf.tid]
+Attr = "href"
+Regex = 'tid=(\d+)'
+Selector = "a:first-of-type"
+[Rule.ExtraConfig]
+baseurl = 'https://www.cool18.com/bbs4/'
+[Rule.TemplateConfig]
+Description = """
+<span>views: {{.views}}</span>
+"""
+Guid = ""
+Link = "{{.baseurl}}{{.link}}"
+PubDate = "20{{.dateY}}-{{.dateM}}-{{.dateD}}T00:00:00Z"
+Thumbnail = ""
+Title = "{{.title}}"

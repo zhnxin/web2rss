@@ -1,0 +1,55 @@
+ItemCount = 64
+[Desc]
+Description = "国产自拍，微米AV,weimiav weimiav官网-微米AV最新网址,网站致力于提供最新,最快的高清在线成人视频，成人图片，成人小说，努力为淫民服务!，微米AV"
+Generator = "https://www.weimi105.com/weimi/guochanzipai.html"
+Image = "https://www.weimi105.com/favicon.ico"
+Language = "zh-cn"
+Link = "https://www.weimi105.com/weimi/guochanzipai.html"
+Title = "weimi"
+Url = "https://www.weimi105.com/weimi/guochanzipai.html"
+
+[Rule]
+ItemSelector = "div.item"
+Key = "link"
+TocUrl = "https://www.weimi105.com/weimi/guochanzipai.html"
+[Rule.ExtraConfig]
+baseurl = 'https://www.weimi105.com'
+[Rule.KeyParseConf]
+[Rule.KeyParseConf.link]
+Attr = "href"
+Regex = ""
+Selector = "div.thumb>a"
+[Rule.KeyParseConf.coverImage]
+Attr = "src"
+Regex = ""
+Selector = "div.thumb>a>img"
+[Rule.KeyParseConf.title]
+Attr = "title"
+Regex = ""
+Selector = "div.thumb>a"
+[Rule.KeyParseConf.putDate]
+Attr = "text"
+Regex = '([\d\-]+)'
+Selector = "div.data>time"
+[Rule.KeyParseConf.category]
+Attr = "text"
+Regex = ''
+Selector = "div.extra>a"
+[Rule.KeyParseConf.comment]
+Attr = "text"
+Regex = ''
+Selector = "span.ds-thread-count"
+
+[Rule.TemplateConfig]
+Description = """
+<img src="{{.baseurl}}{{.coverImage}}" >
+<br/>
+<span>类型：{{.category}}</span>
+<br/>
+<span>comment-num：{{.comment}}</span>
+"""
+Guid = ""
+Link = "{{.baseurl}}{{.link}}"
+PubDate = "{{.putDate}}T00:00:00Z"
+Thumbnail = "{{.baseurl}}{{.coverImage}}"
+Title = "{{.title}}"

@@ -33,6 +33,9 @@ func (r *Repository) Exists(channel, key string) (bool, error) {
 }
 
 func (r *Repository) FindItem(channel string, limit int) ([]Item, error) {
+	if limit == 0 {
+		limit = 20
+	}
 	items := []Item{}
 	err := r.engine.Where("channel = ?", channel).Desc("pubDate").Limit(limit, 0).Find(&items)
 	return items, err

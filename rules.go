@@ -48,8 +48,9 @@ type (
 		PutDate time.Time
 	}
 	ChannelConf struct {
-		Desc FeedDesc
-		Rule Rule
+		ItemCount int
+		Desc      FeedDesc
+		Rule      Rule
 	}
 	FeedDesc struct {
 		Title       string
@@ -250,7 +251,7 @@ func (r *Rule) GenerateItem() ([]Item, error) {
 			itemEntity := Item{}
 			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 			if err != nil {
-				logrus.Error(err)
+				logrus.Error("decode item temp fail:%v:\n%s", err, tpl.String())
 				return
 			}
 			itemEntity.Mk = fmt.Sprint(item[r.Key])
@@ -304,7 +305,7 @@ func (c *ChannelConf) Update() error {
 
 func (c *ChannelConf) ToRss() ([]byte, error) {
 	data := ChannelData{}
-	items, err := c.Rule.repository.FindItem(c.Rule.channel, 20)
+	items, err := c.Rule.repository.FindItem(c.Rule.channel, c.ItemCount)
 	if err != nil {
 		return nil, err
 	}

@@ -19,17 +19,23 @@ import (
 )
 
 var (
-	DATAFILE   = "data.db"
-	ServerAddr = kingpin.Flag("addr", "server addr").Default(":8080").String()
-	ConfigDir  = kingpin.Flag("config-dir", "config dir contain channel config toml").Default("").Short('c').String()
-	CONF_DIR   = ".web2rss"
-	USER_DIR   string
+	DATAFILE  = "data.db"
+	CONF_DIR  = ".web2rss"
+	USER_DIR  string
+	BASE_CONF *BaseConfig
 )
 
 type (
 	Config struct {
 		Channel    []*ChannelConf
 		channelMap map[string]*ChannelConf
+	}
+	BaseConfig struct {
+		Addr      string
+		Token     string
+		ConfigDir string
+		userDir   string
+		Period    int
 	}
 )
 
@@ -67,6 +73,30 @@ func (conf *Config) LoadConfig(dir string) {
 	}
 }
 
+func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
+	if confFile == "" {
+		confFile = path.Join(BASE_CONF.userDir, "conf.toml")
+	}
+	_, _ = toml.DecodeFile(confFile, conf)
+	if confDir == "" {
+		BASE_CONF.ConfigDir = path.Join(BASE_CONF.userDir, "conf")
+	} else {
+		BASE_CONF.ConfigDir = confDir
+	}
+	if conf.Period == 0 {
+		conf.Period = 3600
+	}
+	if addr != "" {
+		conf.Addr = addr
+	}
+	if conf.Addr == "" {
+		conf.Addr = ":8080"
+	}
+	if token != "" {
+		conf.Token = token
+	}
+
+}
 func init() {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:   true,
@@ -84,11 +114,20 @@ func init() {
 			panic(err)
 		}
 	}
+	BASE_CONF = &BaseConfig{
+		userDir: confPath,
+	}
+
+	ServerAddr := kingpin.Flag("addr", "server addr").Default("").String()
+	ConfigDir := kingpin.Flag("config-dir", "config dir contain channel config toml").Default("").Short('c').String()
+	HttpToken := kingpin.Flag("token", "token to authenticate").Short('t').Default("").String()
+	BaseConf := kingpin.Flag("base-config", "base config").Default("").String()
+	kingpin.Parse()
+	BASE_CONF.LoadConfig(*BaseConf, *ServerAddr, *ConfigDir, *HttpToken)
 }
 
 func main() {
-	kingpin.Parse()
-	engine, err := xorm.NewEngine("sqlite3", path.Join(USER_DIR, CONF_DIR, DATAFILE))
+	engine, err := xorm.NewEngine("sqlite3", path.Join(BASE_CONF.userDir, DATAFILE))
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -97,12 +136,9 @@ func main() {
 		logrus.Fatal(err)
 	}
 	repository := newRepository(engine)
+
 	CONFIG := &Config{}
-	if *ConfigDir == "" {
-		CONFIG.LoadConfig(path.Join(USER_DIR, CONF_DIR, "conf"))
-	} else {
-		CONFIG.LoadConfig(*ConfigDir)
-	}
+	CONFIG.LoadConfig(BASE_CONF.ConfigDir)
 	if err = CONFIG.Check(repository); err != nil {
 		logrus.Fatal(err)
 	}
@@ -113,11 +149,16 @@ func main() {
 					logrus.Errorf("update item for %s:%v", channel.Desc.Title, err)
 				}
 			}
-			<-time.After(time.Hour)
+			<-time.After(time.Second * time.Duration(BASE_CONF.Period))
 		}
 	}()
 	gin.SetMode("release")
 	route := gin.Default()
+	route.Use(func(ctx *gin.Context) {
+		if BASE_CONF.Token != "" && ctx.Query("token") != BASE_CONF.Token {
+			_ = ctx.AbortWithError(403, fmt.Errorf("token is not match"))
+		}
+	})
 	route.GET("/rss/:channel", func(ctx *gin.Context) {
 		channelName := ctx.Param("channel")
 		channel, ok := CONFIG.channelMap[channelName]
@@ -139,7 +180,7 @@ func main() {
 		}
 		ctx.JSON(200, gin.H{"rss": fileName})
 	})
-	if err = route.Run(*ServerAddr); err != nil {
+	if err = route.Run(BASE_CONF.Addr); err != nil {
 		logrus.Fatal(err)
 	}
 }

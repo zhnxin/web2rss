@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/user"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/sirupsen/logrus"
+	common "github.com/zhnxin/common-go"
 	"github.com/zouyx/agollo/v3/component/log"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"xorm.io/xorm"
@@ -23,7 +25,10 @@ var (
 	CONF_DIR  = ".web2rss"
 	USER_DIR  string
 	BASE_CONF *BaseConfig
+	Cmd       = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload")
 )
+
+const SOCKET_FILE = ".web2rss.socket"
 
 type (
 	Config struct {
@@ -127,6 +132,33 @@ func init() {
 }
 
 func main() {
+	server := common.NewUnixSocketServer(path.Join(BASE_CONF.userDir, SOCKET_FILE))
+	if *Cmd != "start" {
+		responseBody, err := server.Dial(*Cmd)
+		if err != nil {
+			logrus.Fatal(err)
+		} else {
+			logrus.Info(string(responseBody))
+		}
+		return
+	}
+	go func() {
+		defer server.Stop()
+		for {
+			select {
+			case <-server.Stoped():
+				return
+			default:
+				//do your daemon service
+			}
+		}
+	}()
+	go func() {
+		if err := server.Listen(); err != nil {
+			//stop you daemon if necessary
+			logrus.Fatal(err)
+		}
+	}()
 	engine, err := xorm.NewEngine("sqlite3", path.Join(BASE_CONF.userDir, DATAFILE))
 	if err != nil {
 		logrus.Fatal(err)
@@ -142,6 +174,37 @@ func main() {
 	if err = CONFIG.Check(repository); err != nil {
 		logrus.Fatal(err)
 	}
+	updateChannel := make(chan struct{})
+	server.SetHandler(func(s *common.UnixSocketServer, c net.Conn) error {
+		for {
+			buf := make([]byte, 512)
+			nr, err := c.Read(buf)
+			if err != nil {
+				return nil
+			}
+
+			data := buf[0:nr]
+			switch string(data) {
+			case "status":
+				_, err = fmt.Fprintf(c, "running:%d", os.Getpid())
+			case "stop":
+				_, err = fmt.Fprintf(c, "stop:%d", os.Getpid())
+				s.Stop()
+			case "reload":
+				_, err = fmt.Fprintf(c, "reload:%d", os.Getpid())
+				CONFIG.LoadConfig(BASE_CONF.ConfigDir)
+				if err = CONFIG.Check(repository); err != nil {
+					logrus.Fatal(err)
+				}
+				updateChannel <- struct{}{}
+			default:
+				_, err = fmt.Fprintf(c, "invalid signal")
+			}
+			if err != nil {
+				return err
+			}
+		}
+	})
 	go func() {
 		for {
 			for _, channel := range CONFIG.Channel {
@@ -149,7 +212,10 @@ func main() {
 					logrus.Errorf("update item for %s:%v", channel.Desc.Title, err)
 				}
 			}
-			<-time.After(time.Second * time.Duration(BASE_CONF.Period))
+			select {
+			case <-updateChannel:
+			case <-time.After(time.Second * time.Duration(BASE_CONF.Period)):
+			}
 		}
 	}()
 	gin.SetMode("release")

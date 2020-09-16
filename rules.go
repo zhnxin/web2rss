@@ -120,7 +120,11 @@ func (e *ElementSelector) getKey(s *goquery.Selection) string {
 			text = regexRes[1]
 		}
 	}
-	return EncodeStrForXml(text)
+	if e.Attr != "html" {
+		return EncodeStrForXml(text)
+	} else {
+		return text
+	}
 }
 func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 	res := []string{}
@@ -149,7 +153,11 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 				text = regexRes[1]
 			}
 		}
-		res = append(res, EncodeStrForXml(text))
+		if e.Attr != "html" {
+			res = append(res, EncodeStrForXml(text))
+		} else {
+			res = append(res, text)
+		}
 	})
 	switch len(res) {
 	case 0:

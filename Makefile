@@ -4,3 +4,7 @@ compile:
 	GOOS=windows GOARCH=amd64 go build -o bin/web2rss_win_amd64.exe
 	GOOS=darwin GOARCH=amd64 go build -o bin/web2rss_mac_amd64
 
+build:
+	go build -o bin/web2rss .
+run:
+	go run . start

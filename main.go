@@ -103,7 +103,7 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 	}
 
 }
-func init() {
+func initFunc() {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:   true,
 		TimestampFormat: time.RFC3339,
@@ -135,6 +135,7 @@ func init() {
 }
 
 func main() {
+	initFunc()
 	server := common.NewUnixSocketServer(path.Join(BASE_CONF.userDir, SOCKET_FILE))
 	if *Cmd != "start" {
 		responseBody, err := server.Dial(*Cmd)
@@ -146,15 +147,8 @@ func main() {
 		return
 	}
 	go func() {
-		defer server.Stop()
-		for {
-			select {
-			case <-server.Stoped():
-				return
-			default:
-				//do your daemon service
-			}
-		}
+		<-server.Stoped()
+		os.Exit(0)
 	}()
 	go func() {
 		if err := server.Listen(); err != nil {

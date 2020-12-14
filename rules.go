@@ -67,6 +67,7 @@ type (
 	}
 	Rule struct {
 		TocUrl            string
+		TocUrlList        []string
 		ItemSelector      string
 		ExtraSource       string
 		Key               string
@@ -199,79 +200,90 @@ func (r *Rule) GenerateItem() ([]Item, error) {
 			return nil, fmt.Errorf("generate template for extraUrl fail:%v", err)
 		}
 	}
-	res, _, errs := gorequest.New().Proxy(proxyUrl).Get(r.TocUrl).End()
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("request to toc url fail:%v", errs)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("parse toc page to document fail:%v", err)
+	tocSet := map[string]bool{r.TocUrl: true}
+	for _, u := range r.TocUrlList {
+		tocSet[u] = true
 	}
 
 	items := []Item{}
-	wait := new(sync.WaitGroup)
-	doc.Find(r.ItemSelector).Each(func(i int, s *goquery.Selection) {
-		wait.Add(1)
-		go func(selection *goquery.Selection) {
-			defer wait.Done()
-			item := map[string]interface{}{}
-			for k, v := range r.ExtraConfig {
-				item[k] = v
-			}
-			for k, selector := range r.KeyParseConf {
-				item[k] = selector.getKey(s)
-			}
-			isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-			if isExists {
-				return
-			}
-			if extraUrlTmp != nil {
-				var tpl bytes.Buffer
-				err := extraUrlTmp.Execute(&tpl, item)
+	for tocUrl := range tocSet {
+		if tocUrl == "" {
+			continue
+		}
+		logrus.Debug("toc url: ", tocUrl)
+		res, _, errs := gorequest.New().Proxy(proxyUrl).Get(tocUrl).End()
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("request to toc url fail:%v", errs)
+		}
+
+		doc, err := goquery.NewDocumentFromReader(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("parse toc page to document fail:%v", err)
+		}
+
+		wait := new(sync.WaitGroup)
+		doc.Find(r.ItemSelector).Each(func(i int, s *goquery.Selection) {
+			wait.Add(1)
+			go func(selection *goquery.Selection) {
+				defer wait.Done()
+				item := map[string]interface{}{}
+				for k, v := range r.ExtraConfig {
+					item[k] = v
+				}
+				for k, selector := range r.KeyParseConf {
+					item[k] = selector.getKey(s)
+				}
+				isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
 				if err != nil {
 					logrus.Error(err)
-				} else {
-					extraUrl := tpl.String()
-					extraRes, _, errs := gorequest.New().Proxy(proxyUrl).Get(extraUrl).End()
-					if len(errs) > 0 {
-						logrus.Error(errs)
+					return
+				}
+				if isExists {
+					return
+				}
+				if extraUrlTmp != nil {
+					var tpl bytes.Buffer
+					err := extraUrlTmp.Execute(&tpl, item)
+					if err != nil {
+						logrus.Error(err)
 					} else {
-						extraDoc, err := goquery.NewDocumentFromReader(extraRes.Body)
-						if err != nil {
-							logrus.Error(err)
+						extraUrl := tpl.String()
+						extraRes, _, errs := gorequest.New().Proxy(proxyUrl).Get(extraUrl).End()
+						if len(errs) > 0 {
+							logrus.Error(errs)
 						} else {
-							for k, selector := range r.ExtraKeyParseConf {
-								item[k] = selector.getKeyFromDoc(extraDoc)
+							extraDoc, err := goquery.NewDocumentFromReader(extraRes.Body)
+							if err != nil {
+								logrus.Error(err)
+							} else {
+								for k, selector := range r.ExtraKeyParseConf {
+									item[k] = selector.getKeyFromDoc(extraDoc)
+								}
 							}
+
 						}
 
 					}
-
 				}
-			}
-			var tpl bytes.Buffer
-			err = r.itemTemplate.Execute(&tpl, item)
-			if err != nil {
-				logrus.Error(err)
-				return
-			}
-			itemEntity := Item{}
-			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
-			if err != nil {
-				logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
-				return
-			}
-			itemEntity.Mk = fmt.Sprint(item[r.Key])
-			itemEntity.Channel = r.channel
-			items = append(items, itemEntity)
-		}(s)
-	})
-	wait.Wait()
+				var tpl bytes.Buffer
+				err = r.itemTemplate.Execute(&tpl, item)
+				if err != nil {
+					logrus.Error(err)
+					return
+				}
+				itemEntity := Item{}
+				err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
+				if err != nil {
+					logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
+					return
+				}
+				itemEntity.Mk = fmt.Sprint(item[r.Key])
+				itemEntity.Channel = r.channel
+				items = append(items, itemEntity)
+			}(s)
+		})
+		wait.Wait()
+	}
 	return items, nil
 }
 

@@ -42,6 +42,7 @@ type (
 		userDir   string
 		Period    int
 		HttpProxy string
+		LogLevel  string
 	}
 )
 
@@ -100,6 +101,14 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 	}
 	if token != "" {
 		conf.Token = token
+	}
+	switch conf.LogLevel {
+	case "DEBUG", "debug", "D", "d":
+		logrus.SetLevel(logrus.DebugLevel)
+	case "INFO", "I", "i", "info":
+		logrus.SetLevel(logrus.InfoLevel)
+	case "ERROR", "E", "e", "error", "ERR", "err":
+		logrus.SetLevel(logrus.ErrorLevel)
 	}
 
 }

@@ -21,11 +21,12 @@ import (
 )
 
 var (
-	DATAFILE  = "data.db"
-	CONF_DIR  = ".web2rss"
-	USER_DIR  string
-	BASE_CONF *BaseConfig
-	Cmd       = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload")
+	DATAFILE     = "data.db"
+	CONF_DIR     = ".web2rss"
+	USER_DIR     string
+	BASE_CONF    *BaseConfig
+	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update")
+	CHANNEL_NAME = kingpin.Arg("channel", "command channel target").Default("").String()
 )
 
 const SOCKET_FILE = ".web2rss.socket"
@@ -44,6 +45,9 @@ type (
 		HttpProxy string
 		LogLevel  string
 	}
+	CmdSignal struct {
+		Channel string
+	}
 )
 
 func (conf *Config) Check(repository *Repository) error {
@@ -58,7 +62,28 @@ func (conf *Config) Check(repository *Repository) error {
 	return nil
 }
 
-func (conf *Config) LoadConfig(dir string) {
+func (conf *Config) LoadConfig(dir string, target string) {
+	if target != "" {
+		filePath := path.Join(dir, target+".toml")
+		cconf := ChannelConf{}
+		_, err := toml.DecodeFile(filePath, &cconf)
+		if err != nil {
+			logrus.Errorf("read config fail for %s:%v", filePath, err)
+			return
+		}
+		isUpdate := false
+		for i, d := range conf.Channel {
+			if d.Desc.Title == target {
+				conf.Channel[i] = &cconf
+				isUpdate = true
+			}
+		}
+		if !isUpdate {
+			conf.Channel = append(conf.Channel, &cconf)
+		}
+		logrus.Infof("load config file: %s", filePath)
+		return
+	}
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -147,7 +172,7 @@ func main() {
 	initFunc()
 	server := common.NewUnixSocketServer(path.Join(BASE_CONF.userDir, SOCKET_FILE))
 	if *Cmd != "start" {
-		responseBody, err := server.Dial(*Cmd)
+		responseBody, err := server.Dial(*Cmd + " " + *CHANNEL_NAME)
 		if err != nil {
 			logrus.Fatal(err)
 		} else {
@@ -176,44 +201,43 @@ func main() {
 	repository := newRepository(engine)
 
 	CONFIG := &Config{}
-	CONFIG.LoadConfig(BASE_CONF.ConfigDir)
+	CONFIG.LoadConfig(BASE_CONF.ConfigDir, "")
 	if err = CONFIG.Check(repository); err != nil {
 		logrus.Fatal(err)
 	}
-	updateChannel := make(chan struct{})
-	server.SetHandler(func(s *common.UnixSocketServer, c net.Conn) error {
-		for {
-			buf := make([]byte, 512)
-			nr, err := c.Read(buf)
-			if err != nil {
-				return nil
-			}
-
-			data := buf[0:nr]
-			switch string(data) {
-			case "status":
-				_, err = fmt.Fprintf(c, "running:%d", os.Getpid())
-			case "stop":
-				_, err = fmt.Fprintf(c, "stop:%d", os.Getpid())
-				s.Stop()
-			case "reload":
-				_, err = fmt.Fprintf(c, "reload:%d", os.Getpid())
-				CONFIG.LoadConfig(BASE_CONF.ConfigDir)
-				if err = CONFIG.Check(repository); err != nil {
-					logrus.Fatal(err)
-				}
-				updateChannel <- struct{}{}
-			default:
-				_, err = fmt.Fprintf(c, "invalid signal")
-			}
-			if err != nil {
-				return err
-			}
+	updateChannel := make(chan CmdSignal)
+	server.SetSignalHandlerFunc("reload", func(s *common.UnixSocketServer, c net.Conn, signals ...string) error {
+		_, err := fmt.Fprintf(c, "reload:%d", os.Getpid())
+		if err != nil {
+			return err
 		}
+		targetChannel := ""
+		if len(signals) > 0 {
+			targetChannel = signals[0]
+		}
+		CONFIG.LoadConfig(BASE_CONF.ConfigDir, targetChannel)
+		if err = CONFIG.Check(repository); err != nil {
+			return err
+		}
+		updateChannel <- CmdSignal{Channel: targetChannel}
+		return err
+	})
+	server.SetSignalHandlerFunc("update", func(s *common.UnixSocketServer, c net.Conn, signals ...string) error {
+		_, serr := fmt.Fprintf(c, "update:%d", os.Getpid())
+		targetChannel := ""
+		if len(signals) > 0 {
+			targetChannel = signals[0]
+		}
+		updateChannel <- CmdSignal{Channel: targetChannel}
+		return serr
 	})
 	go func() {
+		targetChannel := ""
 		for {
 			for _, channel := range CONFIG.Channel {
+				if targetChannel != "" && channel.Desc.Title != targetChannel {
+					continue
+				}
 				go func(c *ChannelConf) {
 					if err := c.Update(); err != nil {
 						logrus.Errorf("update item for %s:%v", c.Desc.Title, err)
@@ -221,7 +245,8 @@ func main() {
 				}(channel)
 			}
 			select {
-			case <-updateChannel:
+			case cmdS := <-updateChannel:
+				targetChannel = cmdS.Channel
 			case <-time.After(time.Second * time.Duration(BASE_CONF.Period)):
 			}
 		}

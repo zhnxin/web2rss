@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"xorm.io/xorm"
@@ -23,6 +25,9 @@ type (
 )
 
 func (*Item) TableName() string { return "item" }
+func (i *Item) ToInsertSql() string {
+	return fmt.Sprintf("('%s','%s','%s','%s','%s','%s','%s','%s')", i.Mk, i.Title, i.Link, i.Guid, i.PubDate.Format("2006-01-02 15:04:05"), i.Description, i.Thumb, i.Channel)
+}
 
 func newRepository(engine *xorm.Engine) *Repository {
 	return &Repository{engine: engine}
@@ -45,6 +50,13 @@ func (r *Repository) Save(items []Item) error {
 	if len(items) < 1 {
 		return nil
 	}
-	_, err := r.engine.Insert(items)
+	lines := make([]string, len(items))
+	for i, d := range items {
+		lines[i] = d.ToInsertSql()
+	}
+	_, err := r.engine.Exec(
+		`INSERT INTO ` + (new(Item).TableName()) + " (mk,title,link,guid,pubDate,description,thumb,channel) values" +
+			strings.Join(lines, ",") +
+			" ON CONFLICT(mk) DO UPDATE SET pubDate=excluded.pubDate;")
 	return err
 }

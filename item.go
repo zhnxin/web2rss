@@ -1,10 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
+	"github.com/patrickmn/go-cache"
 	"xorm.io/xorm"
 )
 
@@ -20,21 +19,28 @@ type (
 		Channel     string    `xml:"-" xorm:"'channel' text"`
 	}
 	Repository struct {
-		engine *xorm.Engine
+		keySetCache *cache.Cache
+		engine      *xorm.Engine
 	}
 )
 
 func (*Item) TableName() string { return "item" }
-func (i *Item) ToInsertSql() string {
-	return fmt.Sprintf("('%s','%s','%s','%s','%s','%s','%s','%s')", i.Mk, i.Title, i.Link, i.Guid, i.PubDate.Format("2006-01-02 15:04:05"), i.Description, i.Thumb, i.Channel)
-}
 
 func newRepository(engine *xorm.Engine) *Repository {
-	return &Repository{engine: engine}
+	return &Repository{engine: engine, keySetCache: cache.New(time.Hour*24, time.Hour*12)}
 }
 
 func (r *Repository) Exists(channel, key string) (bool, error) {
-	return r.engine.Where("mk = ? and channel = ?", key, channel).Exist(&Item{})
+	cacheKey := channel + ":" + key
+	_, ok := r.keySetCache.Get(cacheKey)
+	if ok {
+		return true, nil
+	}
+	ok, err := r.engine.Where("mk = ? and channel = ?", key, channel).Exist(&Item{})
+	if err == nil && ok {
+		r.keySetCache.Set(cacheKey, true, cache.DefaultExpiration)
+	}
+	return ok, err
 }
 
 func (r *Repository) FindItem(channel string, limit int) ([]Item, error) {
@@ -50,13 +56,9 @@ func (r *Repository) Save(items []Item) error {
 	if len(items) < 1 {
 		return nil
 	}
-	lines := make([]string, len(items))
-	for i, d := range items {
-		lines[i] = d.ToInsertSql()
+	for _, i := range items {
+		r.keySetCache.Set(i.Channel+":"+i.Mk, true, cache.DefaultExpiration)
 	}
-	_, err := r.engine.Exec(
-		`INSERT INTO ` + (new(Item).TableName()) + " (mk,title,link,guid,pubDate,description,thumb,channel) values" +
-			strings.Join(lines, ",") +
-			" ON CONFLICT(mk) DO UPDATE SET pubDate=excluded.pubDate;")
+	_, err := r.engine.Insert(items)
 	return err
 }

@@ -9,6 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.6.3
 	github.com/mattn/go-sqlite3 v1.14.5
 	github.com/parnurzeal/gorequest v0.2.16
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/sirupsen/logrus v1.7.0
 	github.com/zhnxin/common-go v0.0.0-20201221021828-7385184f1863
 	github.com/zouyx/agollo/v3 v3.4.5

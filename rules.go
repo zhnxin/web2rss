@@ -191,7 +191,7 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	return template.New(templateName).Parse(templateText)
 }
 
-func (r *Rule) GenerateItem() ([]Item, error) {
+func (r *Rule) GenerateItem() ([]*Item, error) {
 	var err error
 	var extraUrlTmp *template.Template
 	if r.ExtraSource != "" {
@@ -205,7 +205,7 @@ func (r *Rule) GenerateItem() ([]Item, error) {
 		tocSet[u] = true
 	}
 
-	items := []Item{}
+	items := []*Item{}
 	for tocUrl := range tocSet {
 		if tocUrl == "" {
 			continue
@@ -271,7 +271,7 @@ func (r *Rule) GenerateItem() ([]Item, error) {
 					logrus.Error(err)
 					return
 				}
-				itemEntity := Item{}
+				itemEntity := &Item{}
 				err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 				if err != nil {
 					logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
@@ -284,7 +284,7 @@ func (r *Rule) GenerateItem() ([]Item, error) {
 		})
 		wait.Wait()
 	}
-	return items, nil
+	return clearItem(items), nil
 }
 
 func NewChannelConf(d FeedDesc,

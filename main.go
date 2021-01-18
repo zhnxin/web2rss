@@ -52,6 +52,16 @@ type (
 
 func (conf *Config) Check(repository *Repository) error {
 	conf.channelMap = map[string]*ChannelConf{}
+	ok, err := repository.engine.IsTableExist(new(Item))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, err = repository.engine.Exec((new(Item).CreateTablesSql()))
+		if err != nil {
+			return err
+		}
+	}
 	for _, c := range conf.Channel {
 		err := c.CheckConf(repository)
 		if err != nil {
@@ -191,10 +201,6 @@ func main() {
 		}
 	}()
 	engine, err := xorm.NewEngine("sqlite3", path.Join(BASE_CONF.userDir, DATAFILE))
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	err = engine.CreateTables(&Item{})
 	if err != nil {
 		logrus.Fatal(err)
 	}

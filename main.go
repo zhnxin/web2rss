@@ -57,7 +57,11 @@ func (conf *Config) Check(repository *Repository) error {
 		return err
 	}
 	if !ok {
-		_, err = repository.engine.Exec((new(Item).CreateTablesSql()))
+		err = repository.engine.CreateTables(new(Item))
+		if err != nil {
+			return err
+		}
+		err = repository.engine.CreateUniques(new(Item))
 		if err != nil {
 			return err
 		}

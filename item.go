@@ -9,14 +9,15 @@ import (
 
 type (
 	Item struct {
-		Mk          string    `xml:"-" xorm:"'mk' text pk "`
+		Id          int64     `xml:"-"`
+		Mk          string    `xml:"-" xorm:"'mk' text notnull unique(mk_channel)"`
 		Title       string    `xml:"title" xorm:"'title' text"`
 		Link        string    `xml:"link" xorm:"'link' text"`
 		Guid        string    `xml:"guid" xorm:"'guid' text"`
 		PubDate     time.Time `xml:"pubDate" xorm:"'pubDate' DATETIME"`
 		Description string    `xml:"description" xorm:"'description' text"`
 		Thumb       string    `xml:"thumb,omitempty" xorm:"'thumb' text"`
-		Channel     string    `xml:"-" xorm:"'channel' text"`
+		Channel     string    `xml:"-" xorm:"'channel' text unique(mk_channel)"`
 		ukey        string    `xml:"-" xorm:"-"`
 	}
 	Repository struct {
@@ -32,10 +33,6 @@ func (i *Item) Key() string {
 	}
 	return i.ukey
 }
-func (*Item) CreateTablesSql() string {
-	return "CREATE TABLE `item` (`mk` TEXT NOT NULL, `title` TEXT NULL, `link` TEXT NULL, `guid` TEXT NULL, `pubDate` DATETIME NULL, `description` TEXT NULL, `thumb` TEXT NULL, `channel` TEXT NULL,PRIMARY KEY (mk,channel));"
-}
-
 func clearItem(items []*Item) []*Item {
 	if len(items) < 1 {
 		return nil

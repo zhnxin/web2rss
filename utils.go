@@ -2,14 +2,20 @@ package main
 
 import "strings"
 
+var (
+	xmlEncodeMap = map[string]string{
+		"<":  "&lt;",
+		">":  "&gt;",
+		"'":  "&apos;",
+		"\"": "&quot;",
+		"&":  "&amp;",
+	}
+)
+
 func EncodeStrForXml(s string) string {
-	return strings.ReplaceAll(
-		strings.ReplaceAll(
-			strings.ReplaceAll(
-				strings.ReplaceAll(
-					strings.ReplaceAll(s, "<", "&lt;"),
-					">", "&gt;"),
-				"'", "&apos;"),
-			"\"", "&quot;"),
-		"&", "&amp;")
+	var tmpStr = s
+	for k, v := range xmlEncodeMap {
+		tmpStr = strings.ReplaceAll(tmpStr, k, v)
+	}
+	return tmpStr
 }

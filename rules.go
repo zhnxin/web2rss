@@ -53,6 +53,7 @@ type (
 	}
 	ChannelConf struct {
 		ItemCount int
+		Peroid    int
 		Desc      FeedDesc
 		Rule      Rule
 	}

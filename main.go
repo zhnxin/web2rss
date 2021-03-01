@@ -50,6 +50,17 @@ type (
 	}
 )
 
+func (conf *Config) Get(channel string) (*ChannelConf, bool) {
+	if conf.channelMap == nil {
+		conf.channelMap = map[string]*ChannelConf{}
+		for _, c := range conf.Channel {
+			conf.channelMap[c.Desc.Title] = c
+		}
+	}
+	c, ok := conf.channelMap[channel]
+	return c, ok
+}
+
 func (conf *Config) Check(repository *Repository) error {
 	conf.channelMap = map[string]*ChannelConf{}
 	ok, err := repository.engine.IsTableExist(new(Item))
@@ -241,23 +252,31 @@ func main() {
 		updateChannel <- CmdSignal{Channel: targetChannel}
 		return serr
 	})
+	channelUpdateSchedule := common.NewSchedule()
 	go func() {
-		targetChannel := ""
-		for {
-			for _, channel := range CONFIG.Channel {
-				if targetChannel != "" && channel.Desc.Title != targetChannel {
-					continue
-				}
+		for cmdS := range updateChannel {
+			channelUpdateSchedule.Remove(cmdS.Channel)
+			channelUpdateSchedule.Add(time.Now(), cmdS.Channel)
+		}
+	}()
+	for _, channel := range CONFIG.Channel {
+		channelUpdateSchedule.Add(time.Now().Add(time.Second), channel.Desc.Title)
+	}
+	go func() {
+		for targetChannel := range channelUpdateSchedule.Chan() {
+			channelName := targetChannel.(string)
+			channelConf, ok := CONFIG.Get(channelName)
+			if ok {
 				go func(c *ChannelConf) {
 					if err := c.Update(); err != nil {
 						logrus.Errorf("update item for %s:%v", c.Desc.Title, err)
 					}
-				}(channel)
-			}
-			select {
-			case cmdS := <-updateChannel:
-				targetChannel = cmdS.Channel
-			case <-time.After(time.Second * time.Duration(BASE_CONF.Period)):
+				}(channelConf)
+				if channelConf.Peroid > 0 {
+					channelUpdateSchedule.Add(time.Now().Add(time.Duration(channelConf.Peroid)*time.Second), channelName)
+				} else {
+					channelUpdateSchedule.Add(time.Now().Add(time.Duration(BASE_CONF.Period)*time.Second), channelName)
+				}
 			}
 		}
 	}()

@@ -272,8 +272,8 @@ func main() {
 						logrus.Errorf("update item for %s:%v", c.Desc.Title, err)
 					}
 				}(channelConf)
-				if channelConf.Peroid > 0 {
-					channelUpdateSchedule.Add(time.Now().Add(time.Duration(channelConf.Peroid)*time.Second), channelName)
+				if channelConf.Period > 0 {
+					channelUpdateSchedule.Add(time.Now().Add(time.Duration(channelConf.Period)*time.Second), channelName)
 				} else {
 					channelUpdateSchedule.Add(time.Now().Add(time.Duration(BASE_CONF.Period)*time.Second), channelName)
 				}

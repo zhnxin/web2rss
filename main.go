@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -307,6 +308,20 @@ func main() {
 			fileName = append(fileName, k)
 		}
 		ctx.JSON(200, gin.H{"rss": fileName})
+	})
+	route.GET("/schedule", func(ctx *gin.Context) {
+		if strings.Contains(ctx.GetHeader("Accept"), "text/html") {
+			ctx.Status(200)
+			tmpl, err := template.New("htmlTest").Parse(htmlTmpl)
+			if err != nil {
+				logrus.Error(err)
+				ctx.JSON(500, gin.H{"err": err.Error()})
+				return
+			}
+			_ = tmpl.Execute(ctx.Writer, channelUpdateSchedule.GetSchedule())
+		} else {
+			ctx.JSON(200, channelUpdateSchedule.GetSchedule())
+		}
 	})
 	if err = route.Run(BASE_CONF.Addr); err != nil {
 		logrus.Fatal(err)

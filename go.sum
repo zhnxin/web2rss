@@ -276,6 +276,8 @@ github.com/zhnxin/common-go v0.0.0-20210301072832-fe6e1a0fcf13 h1:vQ89DUUVXe82Bd
 github.com/zhnxin/common-go v0.0.0-20210301072832-fe6e1a0fcf13/go.mod h1:fL5l4qe2mNwpTT7F8qmHLgTPCh3DY/6uccY0glC9EQI=
 github.com/zhnxin/common-go v0.0.0-20210303060545-69c50ea9deb6 h1:GKpfSaRnBbAE/sDJVdnhfsn95xZpvyETbaK28JcfzNo=
 github.com/zhnxin/common-go v0.0.0-20210303060545-69c50ea9deb6/go.mod h1:fL5l4qe2mNwpTT7F8qmHLgTPCh3DY/6uccY0glC9EQI=
+github.com/zhnxin/common-go v0.0.0-20210304071406-af9a7d067246 h1:gedEYWTKwMwwl+pxCs4Z4SjzuuvzlPkJ49t2zygAiCE=
+github.com/zhnxin/common-go v0.0.0-20210304071406-af9a7d067246/go.mod h1:fL5l4qe2mNwpTT7F8qmHLgTPCh3DY/6uccY0glC9EQI=
 github.com/ziutek/mymysql v1.5.4/go.mod h1:LMSpPZ6DbqWFxNCHW77HeMg9I646SAhApZ/wKdgO/C0=
 github.com/zouyx/agollo v1.9.0 h1:75ZZD6Mwinry71Ds4ZpB9dOTDn3hC8cNSUlgVO5uUxU=
 github.com/zouyx/agollo/v3 v3.4.5 h1:7YCxzY9ZYaH9TuVUBvmI6Tk0mwMggikah+cfbYogcHQ=

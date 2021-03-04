@@ -26,7 +26,7 @@ var (
 	CONF_DIR     = ".web2rss"
 	USER_DIR     string
 	BASE_CONF    *BaseConfig
-	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update")
+	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update", "test")
 	CHANNEL_NAME = kingpin.Arg("channel", "command channel target").Default("").String()
 )
 
@@ -88,13 +88,20 @@ func (conf *Config) Check(repository *Repository) error {
 	return nil
 }
 
+func loadChanalConf(path string) (ChannelConf, error) {
+	cconf := ChannelConf{}
+	_, err := toml.DecodeFile(path, &cconf)
+	if err != nil {
+		return cconf, fmt.Errorf("read config fail for %s:%v", path, err)
+	}
+	return cconf, nil
+}
+
 func (conf *Config) LoadConfig(dir string, target string) {
 	if target != "" {
-		filePath := path.Join(dir, target+".toml")
-		cconf := ChannelConf{}
-		_, err := toml.DecodeFile(filePath, &cconf)
+		cconf, err := loadChanalConf(path.Join(dir, target+".toml"))
 		if err != nil {
-			logrus.Errorf("read config fail for %s:%v", filePath, err)
+			logrus.Error(err)
 			return
 		}
 		isUpdate := false
@@ -107,7 +114,7 @@ func (conf *Config) LoadConfig(dir string, target string) {
 		if !isUpdate {
 			conf.Channel = append(conf.Channel, &cconf)
 		}
-		logrus.Infof("load config file: %s", filePath)
+		logrus.Infof("load config file: %s", target)
 		return
 	}
 	files, err := ioutil.ReadDir(dir)
@@ -118,14 +125,16 @@ func (conf *Config) LoadConfig(dir string, target string) {
 	conf.Channel = []*ChannelConf{}
 	for _, f := range files {
 		if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
-			cconf := ChannelConf{}
-			filePath := path.Join(dir, f.Name())
-			_, err = toml.DecodeFile(filePath, &cconf)
+			cconf, err := loadChanalConf(path.Join(dir, target+".toml"))
 			if err != nil {
-				logrus.Errorf("read config fail for %s:%v", filePath, err)
+				logrus.Error(err)
+				return
+			}
+			if err != nil {
+				logrus.Error(err)
 				continue
 			}
-			logrus.Infof("load config file: %s", filePath)
+			logrus.Infof("load config file: %s", target)
 			conf.Channel = append(conf.Channel, &cconf)
 		}
 	}
@@ -197,7 +206,41 @@ func initFunc() {
 func main() {
 	initFunc()
 	server := common.NewUnixSocketServer(path.Join(BASE_CONF.userDir, SOCKET_FILE))
-	if *Cmd != "start" {
+	switch *Cmd {
+	case "start":
+		break
+	case "test":
+		if *CHANNEL_NAME == "" {
+			logrus.Error("<channel config file> is required for test")
+			return
+		}
+		cconf, err := loadChanalConf(*CHANNEL_NAME)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		err = cconf.CheckConf(nil)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		items, err := cconf.Rule.GenerateItem()
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		itemList := make([]Item, len(items))
+		for i, d := range items {
+			itemList[i] = *d
+		}
+		rawBody, err := cconf.RssRenderItem(itemList)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		logrus.Println(string(rawBody))
+		return
+	default:
 		responseBody, err := server.Dial(*Cmd + " " + *CHANNEL_NAME)
 		if err != nil {
 			logrus.Fatal(err)
@@ -256,8 +299,15 @@ func main() {
 	channelUpdateSchedule := common.NewSchedule()
 	go func() {
 		for cmdS := range updateChannel {
-			channelUpdateSchedule.Remove(cmdS.Channel)
-			channelUpdateSchedule.Add(time.Now(), cmdS.Channel)
+			if cmdS.Channel == "" {
+				channelUpdateSchedule.Clear()
+				for _, channel := range CONFIG.Channel {
+					channelUpdateSchedule.Add(time.Now().Add(time.Second), channel.Desc.Title)
+				}
+			} else {
+				channelUpdateSchedule.Remove(cmdS.Channel)
+				channelUpdateSchedule.Add(time.Now(), cmdS.Channel)
+			}
 		}
 	}()
 	for _, channel := range CONFIG.Channel {

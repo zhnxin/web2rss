@@ -234,13 +234,15 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 				for k, selector := range r.KeyParseConf {
 					item[k] = selector.getKey(s)
 				}
-				isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
-				if err != nil {
-					logrus.Error(err)
-					return
-				}
-				if isExists {
-					return
+				if r.repository != nil {
+					isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
+					if err != nil {
+						logrus.Error(err)
+						return
+					}
+					if isExists {
+						return
+					}
 				}
 				if extraUrlTmp != nil {
 					var tpl bytes.Buffer
@@ -329,18 +331,22 @@ func (c *ChannelConf) Update() error {
 }
 
 func (c *ChannelConf) ToRss() ([]byte, error) {
-	data := ChannelData{}
 	items, err := c.Rule.repository.FindItem(c.Rule.channel, c.ItemCount)
 	if err != nil {
 		return nil, err
 	}
+	return c.RssRenderItem(items)
+}
+
+func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {
+	data := ChannelData{}
 	data.Desc = c.Desc
 	data.Items = items
 	if len(items) > 0 {
 		data.PutDate = items[0].PubDate
 	}
 	var tpl bytes.Buffer
-	err = rssTemplate.Execute(&tpl, data)
+	err := rssTemplate.Execute(&tpl, data)
 	if err != nil {
 		return nil, err
 	}

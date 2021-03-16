@@ -11,8 +11,9 @@ require (
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/sirupsen/logrus v1.8.0
-	github.com/zhnxin/common-go v0.0.0-20210304071406-af9a7d067246
+	github.com/zhnxin/common-go v0.0.0-20210305033543-30455367e6d2
 	github.com/zouyx/agollo/v3 v3.4.5
+	golang.org/x/text v0.3.5 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	moul.io/http2curl v1.0.0 // indirect
 	xorm.io/xorm v1.0.7

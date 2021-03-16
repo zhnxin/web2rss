@@ -125,7 +125,7 @@ func (conf *Config) LoadConfig(dir string, target string) {
 	conf.Channel = []*ChannelConf{}
 	for _, f := range files {
 		if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
-			cconf, err := loadChanalConf(path.Join(dir, target+".toml"))
+			cconf, err := loadChanalConf(path.Join(dir, f.Name()))
 			if err != nil {
 				logrus.Error(err)
 				return
@@ -134,7 +134,7 @@ func (conf *Config) LoadConfig(dir string, target string) {
 				logrus.Error(err)
 				continue
 			}
-			logrus.Infof("load config file: %s", target)
+			logrus.Infof("load config file: %s", f.Name())
 			conf.Channel = append(conf.Channel, &cconf)
 		}
 	}
@@ -238,7 +238,7 @@ func main() {
 			logrus.Error(err)
 			return
 		}
-		logrus.Println(string(rawBody))
+		logrus.Info("rss:\n", string(rawBody))
 		return
 	default:
 		responseBody, err := server.Dial(*Cmd + " " + *CHANNEL_NAME)

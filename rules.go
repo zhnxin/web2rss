@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -12,11 +13,22 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 var (
-	proxyUrl       string
-	rssTemplate, _ = template.New("RssTemplate").Parse(`
+	proxyUrl    string
+	TmplFuncMap = template.FuncMap{
+		"regexp_match": func(str, pattern string) bool {
+			ismatch, err := regexp.Match(pattern, []byte(str))
+			if err != nil {
+				return false
+			}
+			return ismatch
+		},
+	}
+	rssTemplate, _ = template.New("RssTemplate").Funcs(TmplFuncMap).Parse(`
 <rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
 	<channel>
 	<title>{{.Desc.Title}}</title>
@@ -54,8 +66,9 @@ type (
 	ChannelConf struct {
 		ItemCount int
 		Period    int
-		Desc      FeedDesc
-		Rule      Rule
+
+		Desc FeedDesc
+		Rule Rule
 	}
 	FeedDesc struct {
 		Title       string
@@ -67,6 +80,7 @@ type (
 		Link        string
 	}
 	Rule struct {
+		Encoding          string
 		TocUrl            string
 		TocUrlList        []string
 		ItemSelector      string
@@ -189,14 +203,14 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	<![CDATA[%s]]>
 	</description>
 </item>`, t.Title, t.Link, guid, thumb, t.PubDate, t.Description)
-	return template.New(templateName).Parse(templateText)
+	return template.New(templateName).Funcs(TmplFuncMap).Parse(templateText)
 }
 
 func (r *Rule) GenerateItem() ([]*Item, error) {
 	var err error
 	var extraUrlTmp *template.Template
 	if r.ExtraSource != "" {
-		extraUrlTmp, err = template.New("").Parse(r.ExtraSource)
+		extraUrlTmp, err = template.New("").Funcs(TmplFuncMap).Parse(r.ExtraSource)
 		if err != nil {
 			return nil, fmt.Errorf("generate template for extraUrl fail:%v", err)
 		}
@@ -207,6 +221,8 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 	}
 
 	items := []*Item{}
+
+	var doc *goquery.Document
 	for tocUrl := range tocSet {
 		if tocUrl == "" {
 			continue
@@ -217,7 +233,13 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			return nil, fmt.Errorf("request to toc url fail:%v", errs)
 		}
 
-		doc, err := goquery.NewDocumentFromReader(res.Body)
+		switch strings.ToLower(r.Encoding) {
+		case "gbk", "gb10830":
+			doc, err = goquery.NewDocumentFromReader(transform.NewReader(res.Body,
+				simplifiedchinese.GB18030.NewDecoder()))
+		default:
+			doc, err = goquery.NewDocumentFromReader(res.Body)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("parse toc page to document fail:%v", err)
 		}
@@ -255,7 +277,14 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 						if len(errs) > 0 {
 							logrus.Error(errs)
 						} else {
-							extraDoc, err := goquery.NewDocumentFromReader(extraRes.Body)
+							var extraDoc *goquery.Document
+							switch strings.ToLower(r.Encoding) {
+							case "gbk", "gb10830":
+								extraDoc, err = goquery.NewDocumentFromReader(transform.NewReader(extraRes.Body,
+									simplifiedchinese.GB18030.NewDecoder()))
+							default:
+								extraDoc, err = goquery.NewDocumentFromReader(extraRes.Body)
+							}
 							if err != nil {
 								logrus.Error(err)
 							} else {

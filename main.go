@@ -28,6 +28,7 @@ var (
 	BASE_CONF    *BaseConfig
 	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update", "test")
 	CHANNEL_NAME = kingpin.Arg("channel", "command channel target").Default("").String()
+	OutputFile   = kingpin.Flag("output", "test output file path").Default("").Short('o').String()
 )
 
 const SOCKET_FILE = ".web2rss.socket"
@@ -238,7 +239,25 @@ func main() {
 			logrus.Error(err)
 			return
 		}
-		logrus.Info("rss:\n", string(rawBody))
+		if *OutputFile != "" {
+			outputfile, err := os.OpenFile(*OutputFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0655)
+			if err != nil {
+				logrus.Fatalf("open output file %s:%v", *OutputFile, err)
+			}
+			_, err = outputfile.Write(rawBody)
+			if err != nil {
+				logrus.Fatalf("write output file %s:%v", *OutputFile, err)
+			}
+			outputfile.Sync()
+			err = outputfile.Close()
+			if err != nil {
+				logrus.Fatalf("close output file %s:%v", *OutputFile, err)
+			} else {
+				logrus.Info("output file: ", *OutputFile)
+			}
+		} else {
+			fmt.Println(string(rawBody))
+		}
 		return
 	default:
 		responseBody, err := server.Dial(*Cmd + " " + *CHANNEL_NAME)

@@ -23,7 +23,8 @@ import (
 
 var (
 	DATAFILE     = "data.db"
-	CONF_DIR     = ".web2rss"
+	APP_NAME     = "web2rss"
+	CONF_DIR     = ".config"
 	USER_DIR     string
 	BASE_CONF    *BaseConfig
 	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update", "test")
@@ -186,7 +187,14 @@ func initFunc() {
 	USER_DIR = u.HomeDir
 	confPath := path.Join(USER_DIR, CONF_DIR)
 	if _, err := os.Stat(confPath); os.IsNotExist(err) {
-		err = os.Mkdir(confPath, 0755)
+		err = os.Mkdir(confPath, 0700)
+		if err != nil {
+			panic(err)
+		}
+	}
+	confPath = path.Join(USER_DIR, CONF_DIR, APP_NAME)
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		err = os.Mkdir(confPath, 0700)
 		if err != nil {
 			panic(err)
 		}

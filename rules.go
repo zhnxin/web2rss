@@ -10,6 +10,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
@@ -18,17 +19,8 @@ import (
 )
 
 var (
-	proxyUrl    string
-	TmplFuncMap = template.FuncMap{
-		"regexp_match": func(str, pattern string) bool {
-			ismatch, err := regexp.Match(pattern, []byte(str))
-			if err != nil {
-				return false
-			}
-			return ismatch
-		},
-	}
-	rssTemplate, _ = template.New("RssTemplate").Funcs(TmplFuncMap).Parse(`
+	proxyUrl       string
+	rssTemplate, _ = template.New("RssTemplate").Funcs(sprig.TxtFuncMap()).Parse(`
 <rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
 	<channel>
 	<title>{{.Desc.Title}}</title>
@@ -85,6 +77,7 @@ type (
 		TocUrlList        []string
 		ItemSelector      string
 		ExtraSource       string
+		JsonSource        []JsonApiSource
 		Key               string
 		ExtraConfig       map[string]string
 		KeyParseConf      map[string]ElementSelector
@@ -93,6 +86,10 @@ type (
 		itemTemplate      *template.Template
 		channel           string
 		repository        *Repository
+	}
+	JsonApiSource struct {
+		Link         string
+		KeyParseConf map[string]JsonElementSelector
 	}
 	ItemTemplate struct {
 		Link        string
@@ -106,6 +103,10 @@ type (
 		Selector string
 		Regex    string
 		Attr     string
+	}
+	JsonElementSelector struct {
+		Regex   string
+		KeyPath []string
 	}
 )
 
@@ -203,14 +204,14 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	<![CDATA[%s]]>
 	</description>
 </item>`, t.Title, t.Link, guid, thumb, t.PubDate, t.Description)
-	return template.New(templateName).Funcs(TmplFuncMap).Parse(templateText)
+	return template.New(templateName).Funcs(sprig.TxtFuncMap()).Parse(templateText)
 }
 
 func (r *Rule) GenerateItem() ([]*Item, error) {
 	var err error
 	var extraUrlTmp *template.Template
 	if r.ExtraSource != "" {
-		extraUrlTmp, err = template.New("").Funcs(TmplFuncMap).Parse(r.ExtraSource)
+		extraUrlTmp, err = template.New("").Funcs(sprig.TxtFuncMap()).Parse(r.ExtraSource)
 		if err != nil {
 			return nil, fmt.Errorf("generate template for extraUrl fail:%v", err)
 		}

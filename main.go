@@ -372,7 +372,16 @@ func main() {
 			_ = ctx.AbortWithError(404, fmt.Errorf("channelName %s not found", channelName))
 			return
 		}
-		body, err := channel.ToRss()
+		query := struct {
+			SearchKey string `form:"s"`
+			PageIndex int    `form:"p"`
+			PageSize  int    `form:"size"`
+		}{}
+		ctx.BindQuery(&query)
+		if query.PageIndex < 1 {
+			query.PageIndex = 1
+		}
+		body, err := channel.ToRss(query.SearchKey, query.PageSize, query.PageSize)
 		if err != nil {
 			_ = ctx.AbortWithError(500, err)
 			return

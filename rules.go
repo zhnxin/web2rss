@@ -168,6 +168,8 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 			regexRes := regexP.FindStringSubmatch(text)
 			if len(regexRes) > 1 {
 				text = regexRes[1]
+			} else {
+				logrus.Debug(text)
 			}
 		}
 		if e.Attr != "html" {
@@ -360,8 +362,12 @@ func (c *ChannelConf) Update() error {
 	return err
 }
 
-func (c *ChannelConf) ToRss() ([]byte, error) {
-	items, err := c.Rule.repository.FindItem(c.Rule.channel, c.ItemCount)
+func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, error) {
+	limit := c.ItemCount
+	if pageSize > 0 {
+		limit = pageSize
+	}
+	items, err := c.Rule.repository.FindItem(c.Rule.channel, searchKey, limit, pageIndex)
 	if err != nil {
 		return nil, err
 	}

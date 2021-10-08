@@ -68,19 +68,19 @@ func (r *Repository) Exists(channel, key string) (bool, error) {
 }
 
 func (r *Repository) FindItem(channel, searchKey string, pageSize, pageIndex int) ([]Item, error) {
-	query := r.engine.Table(&Item{}).Desc("pubDate")
+	query := r.engine.Table(&Item{})
 	if searchKey != "" {
 		query = query.Where("channel = ? AND title LIKE ?", channel, "%"+searchKey+"%")
 	} else {
 		query = query.Where("channel = ?", channel)
 	}
-	if pageSize < 0 {
+	if pageSize < 1 {
 		query = query.Limit(20, (pageIndex-1)*20)
 	} else {
-		query = query.Limit(pageSize, (pageIndex-1)*20)
+		query = query.Limit(pageSize, (pageIndex-1)*pageSize)
 	}
 	items := []Item{}
-	err := query.Find(&items)
+	err := query.Desc("pubDate").Find(&items)
 	return items, err
 }
 

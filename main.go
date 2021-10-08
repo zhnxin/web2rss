@@ -381,7 +381,7 @@ func main() {
 		if query.PageIndex < 1 {
 			query.PageIndex = 1
 		}
-		body, err := channel.ToRss(query.SearchKey, query.PageSize, query.PageSize)
+		body, err := channel.ToRss(query.SearchKey, query.PageSize, query.PageIndex)
 		if err != nil {
 			_ = ctx.AbortWithError(500, err)
 			return

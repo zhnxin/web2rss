@@ -20,7 +20,10 @@ import (
 
 var (
 	proxyUrl       string
-	rssTemplate, _ = template.New("RssTemplate").Funcs(sprig.TxtFuncMap()).Parse(`
+	rssTemplate, _ = template.New("RssTemplate").Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
+		"timeFromStr": tmplFuncDateFromStr,
+		"timeToStr":   tmpFuncDateToStr,
+	}).Parse(`
 <rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
 	<channel>
 	<title>{{.Desc.Title}}</title>
@@ -32,7 +35,7 @@ var (
 	<link>{{.Desc.Link}}</link>
 	{{range $i,$element := .Items }}<item>
 		<title>{{$element.Title}}</title>
-		<pubDate>{{$element.PubDate}}</pubDate>
+		<pubDate>{{$element.PubDate }}</pubDate>
 		<link>{{$element.Link}}</link>
 		<guid>{{$element.Guid}}</guid>
 		<thumb>{{$element.Thumb}}</thumb>
@@ -206,7 +209,10 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	<![CDATA[%s]]>
 	</description>
 </item>`, t.Title, t.Link, guid, thumb, t.PubDate, t.Description)
-	return template.New(templateName).Funcs(sprig.TxtFuncMap()).Parse(templateText)
+	return template.New(templateName).Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
+		"timeFromStr": tmplFuncDateFromStr,
+		"timeToStr":   tmpFuncDateToStr,
+	}).Parse(templateText)
 }
 
 func (r *Rule) GenerateItem() ([]*Item, error) {

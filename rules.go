@@ -75,20 +75,22 @@ type (
 		Link        string
 	}
 	Rule struct {
-		Encoding          string
-		TocUrl            string
-		TocUrlList        []string
-		ItemSelector      string
-		ExtraSource       string
-		JsonSource        []JsonApiSource
-		Key               string
-		ExtraConfig       map[string]string
-		KeyParseConf      map[string]ElementSelector
-		ExtraKeyParseConf map[string]ElementSelector
-		TemplateConfig    ItemTemplate
-		itemTemplate      *template.Template
-		channel           string
-		repository        *Repository
+		Encoding           string
+		TocUrl             string
+		TocUrlList         []string
+		ItemSelector       string
+		ExtraSource        string
+		Headers            map[string]string
+		ExtraSourceHeaders map[string]string
+		NoProxy            bool
+		Key                string
+		ExtraConfig        map[string]string
+		KeyParseConf       map[string]ElementSelector
+		ExtraKeyParseConf  map[string]ElementSelector
+		TemplateConfig     ItemTemplate
+		itemTemplate       *template.Template
+		channel            string
+		repository         *Repository
 	}
 	JsonApiSource struct {
 		Link         string
@@ -215,6 +217,28 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	}).Parse(templateText)
 }
 
+func (r *Rule) generateReqClient(url string, isExtraReq bool) *gorequest.SuperAgent {
+	req := gorequest.New()
+	if !r.NoProxy {
+		req = req.Proxy(proxyUrl)
+	}
+	req = req.Get(url)
+	if isExtraReq {
+		if len(r.ExtraSourceHeaders) > 0 {
+			for k, v := range r.ExtraSourceHeaders {
+				req = req.Set(k, v)
+			}
+		}
+	} else {
+		if len(r.Headers) > 0 {
+			for k, v := range r.Headers {
+				req = req.Set(k, v)
+			}
+		}
+	}
+	return req
+}
+
 func (r *Rule) GenerateItem() ([]*Item, error) {
 	var err error
 	var extraUrlTmp *template.Template
@@ -237,7 +261,8 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			continue
 		}
 		logrus.Debug("toc url: ", tocUrl)
-		res, _, errs := gorequest.New().Proxy(proxyUrl).Get(tocUrl).End()
+		req := r.generateReqClient(tocUrl, false)
+		res, _, errs := req.End()
 		if len(errs) > 0 {
 			return nil, fmt.Errorf("request to toc url fail:%v", errs)
 		}
@@ -281,8 +306,8 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 					if err != nil {
 						logrus.Error(err)
 					} else {
-						extraUrl := tpl.String()
-						extraRes, _, errs := gorequest.New().Proxy(proxyUrl).Get(extraUrl).End()
+						extraReq := r.generateReqClient(tpl.String(), true)
+						extraRes, _, errs := extraReq.End()
 						if len(errs) > 0 {
 							logrus.Error(errs)
 						} else {

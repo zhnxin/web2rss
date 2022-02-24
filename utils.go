@@ -17,11 +17,15 @@ var (
 	formatMap map[string]string = map[string]string{
 		"YY": "06",
 		"Y":  "2006",
-		"m":  "01",
-		"d":  "02",
+		"m":  "1",
+		"mm": "01",
+		"d":  "2",
+		"dd": "02",
 		"H":  "15",
-		"M":  "04",
-		"S":  "05",
+		"M":  "4",
+		"S":  "5",
+		"MM":  "04",
+		"SS":  "05",
 	}
 )
 
@@ -33,7 +37,7 @@ func EncodeStrForXml(s string) string {
 	return tmpStr
 }
 
-func tmpGenerateTimeFormat(layer string)string{
+func tmpGenerateTimeFormat(layer string) string {
 	formatLayer := layer
 	if layer == "rfc3339" || layer == "RFC3339" || layer == "" {
 		return time.RFC3339
@@ -55,7 +59,7 @@ func tmplFuncDateFromStr(layer, value string) time.Time {
 	return ts
 }
 
-func tmpFuncDateToStr(layer string,t time.Time)string{
+func tmpFuncDateToStr(layer string, t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}

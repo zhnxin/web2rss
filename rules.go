@@ -124,14 +124,21 @@ func NewElementSelector(selector, attr, regex string) ElementSelector {
 }
 func (e *ElementSelector) getKey(s *goquery.Selection) string {
 	var text string
+	element :=s
+	if e.Selector != "" {
+		element = s.Find(e.Selector).First();
+		if element == nil{
+			logrus.Error("sub element not found for ", e.Selector)
+		}
+	}
 	switch e.Attr {
 	case "html":
-		text, _ = s.Find(e.Selector).First().Html()
+		text, _ = element.Html()
 	case "text", "":
-		text = s.Find(e.Selector).First().Text()
+		text = element.Text()
 	default:
 		var isExists bool
-		text, isExists = s.Find(e.Selector).First().Attr(e.Attr)
+		text, isExists = element.Attr(e.Attr)
 		if !isExists {
 			logrus.Error("element and atrr not found in extra page for ", e.Selector)
 		}

@@ -124,10 +124,10 @@ func NewElementSelector(selector, attr, regex string) ElementSelector {
 }
 func (e *ElementSelector) getKey(s *goquery.Selection) string {
 	var text string
-	element :=s
+	element := s
 	if e.Selector != "" {
-		element = s.Find(e.Selector).First();
-		if element == nil{
+		element = s.Find(e.Selector).First()
+		if element == nil {
 			logrus.Error("sub element not found for ", e.Selector)
 		}
 	}
@@ -246,8 +246,8 @@ func (r *Rule) generateReqClient(url string, isExtraReq bool) *gorequest.SuperAg
 	return req
 }
 
-func (r *Rule) GenerateItem() ([]*Item, error) {
-	var err error
+func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
+	items = []*Item{}
 	var extraUrlTmp *template.Template
 	if r.ExtraSource != "" {
 		extraUrlTmp, err = template.New("").Funcs(sprig.TxtFuncMap()).Parse(r.ExtraSource)
@@ -255,107 +255,150 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			return nil, fmt.Errorf("generate template for extraUrl fail:%v", err)
 		}
 	}
+	var doc *goquery.Document
+	req := r.generateReqClient(tocUrl, false)
+	res, _, errs := req.End()
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("request to toc url fail:%v", errs)
+	}
+
+	switch strings.ToLower(r.Encoding) {
+	case "gbk", "gb10830":
+		doc, err = goquery.NewDocumentFromReader(transform.NewReader(res.Body,
+			simplifiedchinese.GB18030.NewDecoder()))
+	default:
+		doc, err = goquery.NewDocumentFromReader(res.Body)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parse toc page to document fail:%v", err)
+	}
+
+	wait := new(sync.WaitGroup)
+	doc.Find(r.ItemSelector).Each(func(i int, s *goquery.Selection) {
+		wait.Add(1)
+		go func(selection *goquery.Selection) {
+			defer wait.Done()
+			item := map[string]interface{}{}
+			for k, v := range r.ExtraConfig {
+				item[k] = v
+			}
+			for k, selector := range r.KeyParseConf {
+				item[k] = selector.getKey(s)
+			}
+			if r.repository != nil {
+				isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
+				if err != nil {
+					logrus.Error(err)
+					return
+				}
+				if isExists {
+					return
+				}
+			}
+			if extraUrlTmp != nil {
+				var tpl bytes.Buffer
+				err := extraUrlTmp.Execute(&tpl, item)
+				if err != nil {
+					logrus.Error(err)
+				} else {
+					extraReq := r.generateReqClient(tpl.String(), true)
+					extraRes, _, errs := extraReq.End()
+					if len(errs) > 0 {
+						logrus.Error(errs)
+					} else {
+						var extraDoc *goquery.Document
+						switch strings.ToLower(r.Encoding) {
+						case "gbk", "gb10830":
+							extraDoc, err = goquery.NewDocumentFromReader(transform.NewReader(extraRes.Body,
+								simplifiedchinese.GB18030.NewDecoder()))
+						default:
+							extraDoc, err = goquery.NewDocumentFromReader(extraRes.Body)
+						}
+						if err != nil {
+							logrus.Error(err)
+						} else {
+							for k, selector := range r.ExtraKeyParseConf {
+								item[k] = selector.getKeyFromDoc(extraDoc)
+							}
+						}
+
+					}
+
+				}
+			}
+			var tpl bytes.Buffer
+			err = r.itemTemplate.Execute(&tpl, item)
+			if err != nil {
+				logrus.Error(err)
+				return
+			}
+			itemEntity := &Item{}
+			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
+			if err != nil {
+				logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
+				return
+			}
+			itemEntity.Mk = fmt.Sprint(item[r.Key])
+			itemEntity.Channel = r.channel
+			items = append(items, itemEntity)
+		}(s)
+	})
+	wait.Wait()
+	return
+}
+
+func (r *Rule) GenerateItem() ([]*Item, error) {
 	tocSet := map[string]bool{r.TocUrl: true}
 	for _, u := range r.TocUrlList {
 		tocSet[u] = true
 	}
 
 	items := []*Item{}
-
-	var doc *goquery.Document
+	resChan := make(chan struct {
+		items []*Item
+		err   error
+	})
+	wait := new(sync.WaitGroup)
 	for tocUrl := range tocSet {
 		if tocUrl == "" {
 			continue
 		}
-		logrus.Debug("toc url: ", tocUrl)
-		req := r.generateReqClient(tocUrl, false)
-		res, _, errs := req.End()
-		if len(errs) > 0 {
-			return nil, fmt.Errorf("request to toc url fail:%v", errs)
-		}
-
-		switch strings.ToLower(r.Encoding) {
-		case "gbk", "gb10830":
-			doc, err = goquery.NewDocumentFromReader(transform.NewReader(res.Body,
-				simplifiedchinese.GB18030.NewDecoder()))
-		default:
-			doc, err = goquery.NewDocumentFromReader(res.Body)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("parse toc page to document fail:%v", err)
-		}
-
-		wait := new(sync.WaitGroup)
-		doc.Find(r.ItemSelector).Each(func(i int, s *goquery.Selection) {
-			wait.Add(1)
-			go func(selection *goquery.Selection) {
-				defer wait.Done()
-				item := map[string]interface{}{}
-				for k, v := range r.ExtraConfig {
-					item[k] = v
+		wait.Add(1)
+		go func(url string) {
+			defer wait.Done()
+			var e error
+			var res []*Item
+			for i := 0; i < 5; i++ {
+				res, e = r.spideToc(url)
+				if e == nil {
+					break
+				} else {
+					logrus.Infof("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
+					time.Sleep(time.Second)
 				}
-				for k, selector := range r.KeyParseConf {
-					item[k] = selector.getKey(s)
-				}
-				if r.repository != nil {
-					isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
-					if err != nil {
-						logrus.Error(err)
-						return
-					}
-					if isExists {
-						return
-					}
-				}
-				if extraUrlTmp != nil {
-					var tpl bytes.Buffer
-					err := extraUrlTmp.Execute(&tpl, item)
-					if err != nil {
-						logrus.Error(err)
-					} else {
-						extraReq := r.generateReqClient(tpl.String(), true)
-						extraRes, _, errs := extraReq.End()
-						if len(errs) > 0 {
-							logrus.Error(errs)
-						} else {
-							var extraDoc *goquery.Document
-							switch strings.ToLower(r.Encoding) {
-							case "gbk", "gb10830":
-								extraDoc, err = goquery.NewDocumentFromReader(transform.NewReader(extraRes.Body,
-									simplifiedchinese.GB18030.NewDecoder()))
-							default:
-								extraDoc, err = goquery.NewDocumentFromReader(extraRes.Body)
-							}
-							if err != nil {
-								logrus.Error(err)
-							} else {
-								for k, selector := range r.ExtraKeyParseConf {
-									item[k] = selector.getKeyFromDoc(extraDoc)
-								}
-							}
-
-						}
-
-					}
-				}
-				var tpl bytes.Buffer
-				err = r.itemTemplate.Execute(&tpl, item)
-				if err != nil {
-					logrus.Error(err)
-					return
-				}
-				itemEntity := &Item{}
-				err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
-				if err != nil {
-					logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
-					return
-				}
-				itemEntity.Mk = fmt.Sprint(item[r.Key])
-				itemEntity.Channel = r.channel
-				items = append(items, itemEntity)
-			}(s)
-		})
+			}
+			logrus.Debugf("download complete:%s", url)
+			resChan <- struct {
+				items []*Item
+				err   error
+			}{items: res, err: e}
+		}(tocUrl)
+	}
+	err := []error{}
+	go func(){
 		wait.Wait()
+		close(resChan)
+	}()
+	for res := range resChan {
+		if res.err != nil {
+			err = append(err, res.err)
+		} else {
+			items = append(items, res.items...)
+		}
+	}
+	logrus.Debugf("download completed:%s", r.channel)
+	if len(err) > 0 {
+		return nil, fmt.Errorf("更新失败:%v", err)
 	}
 	return clearItem(items), nil
 }

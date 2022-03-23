@@ -16,6 +16,7 @@ require (
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/panjf2000/ants/v2 v2.4.8
 	github.com/parnurzeal/gorequest v0.2.16
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/sirupsen/logrus v1.8.1

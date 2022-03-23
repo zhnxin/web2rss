@@ -12,6 +12,7 @@ import (
 
 	"github.com/Masterminds/sprig"
 	"github.com/PuerkitoBio/goquery"
+	ants "github.com/panjf2000/ants/v2"
 	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -75,6 +76,7 @@ type (
 		Link        string
 	}
 	Rule struct {
+		GroutineCount int
 		Encoding           string
 		TocUrl             string
 		TocUrlList         []string
@@ -359,13 +361,13 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 		err   error
 	})
 	wait := new(sync.WaitGroup)
-	for tocUrl := range tocSet {
-		if tocUrl == "" {
-			continue
-		}
-		wait.Add(1)
-		go func(url string) {
-			defer wait.Done()
+	groutineCount := r.GroutineCount;
+	if groutineCount < 1{
+		groutineCount = 16
+	}
+	p, _ := ants.NewPoolWithFunc(groutineCount, func(i interface{}) {
+		url := i.(string)
+		defer wait.Done()
 			var e error
 			var res []*Item
 			for i := 0; i < 5; i++ {
@@ -382,8 +384,19 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 				items []*Item
 				err   error
 			}{items: res, err: e}
-		}(tocUrl)
-	}
+	})
+	wait.Add(1)
+	go func(){
+		defer wait.Done()
+		for tocUrl := range tocSet {
+			if tocUrl == "" {
+				continue
+			}
+			wait.Add(1)
+			_ = p.Invoke(tocUrl)
+		}
+	}()
+	defer p.Release()
 	err := []error{}
 	go func(){
 		wait.Wait()

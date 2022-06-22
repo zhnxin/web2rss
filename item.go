@@ -3,6 +3,8 @@ package main
 import (
 	"time"
 
+	"encoding/xml"
+
 	"github.com/patrickmn/go-cache"
 	"xorm.io/xorm"
 )
@@ -11,11 +13,11 @@ type (
 	Item struct {
 		Id          int64     `xml:"-"`
 		Mk          string    `xml:"-" xorm:"'mk' text notnull unique(mk_channel)"`
-		Title       string    `xml:"title" xorm:"'title' text"`
-		Link        string    `xml:"link" xorm:"'link' text"`
-		Guid        string    `xml:"guid" xorm:"'guid' text"`
+		Title       *RssCdata    `xml:"title" xorm:"'title' text"`
+		Link        *RssCdata    `xml:"link" xorm:"'link' text"`
+		Guid        *RssCdata    `xml:"guid" xorm:"'guid' text"`
 		PubDate     time.Time `xml:"pubDate" xorm:"'pubDate' DATETIME"`
-		Description string    `xml:"description" xorm:"'description' text"`
+		Description *RssCdata `xml:"description" xorm:"'description' text"`
 		Thumb       string    `xml:"thumb,omitempty" xorm:"'thumb' text"`
 		Channel     string    `xml:"-" xorm:"'channel' text unique(mk_channel)"`
 		ukey        string    `xml:"-" xorm:"-"`
@@ -24,8 +26,32 @@ type (
 		keySetCache *cache.Cache
 		engine      *xorm.Engine
 	}
+	RssRoot struct{
+		XMLName xml.Name `xml:"rss"`
+		Version string `xml:"version,attr"`
+		Atom string `xml:"xmlns:atom,attr"`
+		Channel RssChannel `xml:"channel"`
+	}
+	RssChannel struct{
+		Title *RssCdata `xml:"title"`
+		Language string `xml:"language"`
+		PubDate time.Time `xml:"pubDate,omitempty"`
+		Generator *RssCdata `xml:"generator,omitempty"`
+		Description *RssCdata `xml:"description,omitempty"`
+		Link string `xml:"link"`
+		Item []Item `xml:"item"`
+	}
+	RssCdata struct{
+		Content string `xml:",cdata"`
+	}
 )
-
+func (c *RssCdata) FromDB(bytes []byte) error {
+	*c = *newRssCdata(string(bytes))
+	return nil
+}
+func (c *RssCdata) ToDB() ([]byte, error) {
+	return []byte(c.Content), nil
+}
 func (*Item) TableName() string { return "item" }
 func (i *Item) Key() string {
 	if i.ukey == "" {
@@ -95,4 +121,28 @@ func (r *Repository) Save(items []*Item) error {
 		}
 	}
 	return err
+}
+
+func newRssCdata(content string) *RssCdata{
+	if len(content) > 0{
+		return &RssCdata{Content: content}
+	}
+	return nil
+}
+
+func NewRssChannel(title,language,generator,description,link string,pubDate time.Time,items []Item)([]byte, error){
+	rssRoot := RssRoot{
+		Version: "2.0",
+		Atom: "http://www.w3.org/2005/Atom",
+		Channel:RssChannel{
+			Title: newRssCdata(title),
+			Language: language,
+			PubDate: pubDate,
+			Generator: newRssCdata(generator),
+			Description: newRssCdata(description),
+			Link: link,
+			Item: items,
+		},
+	}
+	return xml.Marshal(rssRoot)
 }

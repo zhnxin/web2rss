@@ -54,11 +54,6 @@ func SetProxy(proxy string) {
 }
 
 type (
-	ChannelData struct {
-		Desc    FeedDesc
-		Items   []Item
-		PutDate time.Time
-	}
 	ChannelConf struct {
 		ItemCount int
 		Period    int
@@ -212,9 +207,9 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 		thumb = fmt.Sprintf("\n<thumb>%s</thumb>", t.Thumbnail)
 	}
 	templateText := fmt.Sprintf(`<item>
-	<title>%s</title>
-	<link>%s</link>
-	<guid>%s</guid>%s
+	<title><![CDATA[%s]]></title>
+	<link><![CDATA[%s]]></link>
+	<guid><![CDATA[%s]]></guid>%s
 	<pubDate>%s</pubDate>
 	<description>
 	<![CDATA[%s]]>
@@ -307,6 +302,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 					extraRes, _, errs := extraReq.End()
 					if len(errs) > 0 {
 						logrus.Error(errs)
+						return
 					} else {
 						var extraDoc *goquery.Document
 						switch strings.ToLower(r.Encoding) {
@@ -325,7 +321,6 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 						}
 
 					}
-
 				}
 			}
 			var tpl bytes.Buffer
@@ -469,16 +464,9 @@ func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, 
 }
 
 func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {
-	data := ChannelData{}
-	data.Desc = c.Desc
-	data.Items = items
+	pubData:= time.Now()
 	if len(items) > 0 {
-		data.PutDate = items[0].PubDate
+		pubData = items[0].PubDate
 	}
-	var tpl bytes.Buffer
-	err := rssTemplate.Execute(&tpl, data)
-	if err != nil {
-		return nil, err
-	}
-	return tpl.Bytes(), nil
+	return NewRssChannel(c.Desc.Title,c.Desc.Language,c.Desc.Generator,c.Desc.Description,c.Desc.Link,pubData,items)
 }

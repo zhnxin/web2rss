@@ -386,6 +386,7 @@ func main() {
 			_ = ctx.AbortWithError(500, err)
 			return
 		}
+		ctx.Writer.Header().Set("Content-Type", "application/xml; charset=utf-8")
 		_, _ = ctx.Writer.Write(body)
 	})
 	route.GET("/rss", func(ctx *gin.Context) {

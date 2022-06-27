@@ -52,6 +52,9 @@ func (c *RssCdata) FromDB(bytes []byte) error {
 func (c *RssCdata) ToDB() ([]byte, error) {
 	return []byte(c.Content), nil
 }
+func (c *RssCdata) String() string {
+	return c.Content
+}
 func (*Item) TableName() string { return "item" }
 func (i *Item) Key() string {
 	if i.ukey == "" {

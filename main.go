@@ -329,6 +329,9 @@ func main() {
 			if cmdS.Channel == "" {
 				channelUpdateSchedule.Clear()
 				for _, channel := range CONFIG.Channel {
+					if channel.DBless{
+						continue
+					}
 					channelUpdateSchedule.Add(time.Now().Add(time.Second), channel.Desc.Title)
 				}
 			} else {
@@ -345,6 +348,9 @@ func main() {
 			channelName := targetChannel.(string)
 			channelConf, ok := CONFIG.Get(channelName)
 			if ok {
+				if channelConf.DBless{
+					continue
+				}
 				go func(c *ChannelConf) {
 					if err := c.Update(); err != nil {
 						logrus.Errorf("update item for %s:%v", c.Desc.Title, err)

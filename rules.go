@@ -57,7 +57,7 @@ type (
 	ChannelConf struct {
 		ItemCount int
 		Period    int
-
+		DBless bool
 		Desc FeedDesc
 		Rule Rule
 	}
@@ -146,11 +146,7 @@ func (e *ElementSelector) getKey(s *goquery.Selection) string {
 			text = regexRes[1]
 		}
 	}
-	if e.Attr != "html" {
-		return EncodeStrForXml(text)
-	} else {
-		return text
-	}
+	return text
 }
 func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 	res := []string{}
@@ -329,7 +325,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 				logrus.Error(err)
 				return
 			}
-			itemEntity := &Item{}
+			itemEntity := Item{}
 			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 			if err != nil {
 				logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
@@ -337,7 +333,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 			}
 			itemEntity.Mk = fmt.Sprint(item[r.Key])
 			itemEntity.Channel = r.channel
-			items = append(items, itemEntity)
+			items = append(items, &itemEntity)
 		}(s)
 	})
 	wait.Wait()
@@ -452,15 +448,27 @@ func (c *ChannelConf) Update() error {
 }
 
 func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, error) {
-	limit := c.ItemCount
-	if pageSize > 0 {
-		limit = pageSize
+	if c.DBless {
+		res, err := c.Rule.GenerateItem()
+		if err != nil {
+			return nil, err
+		}
+		items := make([]Item,len(res))
+		for i,d := range res{
+			items[i] = *d
+		}
+		return c.RssRenderItem(items)
+	}else{
+		limit := c.ItemCount
+		if pageSize > 0 {
+			limit = pageSize
+		}
+		items, err := c.Rule.repository.FindItem(c.Rule.channel, searchKey, limit, pageIndex)
+		if err != nil {
+			return nil, err
+		}
+		return c.RssRenderItem(items)
 	}
-	items, err := c.Rule.repository.FindItem(c.Rule.channel, searchKey, limit, pageIndex)
-	if err != nil {
-		return nil, err
-	}
-	return c.RssRenderItem(items)
 }
 
 func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {

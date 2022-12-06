@@ -16,6 +16,7 @@ type (
 		Title       *RssCdata    `xml:"title" xorm:"'title' text"`
 		Link        *RssCdata    `xml:"link" xorm:"'link' text"`
 		Guid        *RssCdata    `xml:"guid" xorm:"'guid' text"`
+		Category 	*RssCdata    `xml:"category" xorm:"'category' text"`
 		PubDate     time.Time `xml:"pubDate" xorm:"'pubDate' DATETIME"`
 		Description *RssCdata `xml:"description" xorm:"'description' text"`
 		Thumb       string    `xml:"thumb,omitempty" xorm:"'thumb' text"`
@@ -46,7 +47,9 @@ type (
 	}
 )
 func (c *RssCdata) FromDB(bytes []byte) error {
-	*c = *newRssCdata(string(bytes))
+	if len(bytes) > 0{
+		*c = *newRssCdata(string(bytes))
+	}
 	return nil
 }
 func (c *RssCdata) ToDB() ([]byte, error) {

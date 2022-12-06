@@ -100,6 +100,7 @@ type (
 		Description string
 		PubDate     string
 		Thumbnail   string
+		Category 	string
 	}
 	ElementSelector struct {
 		Selector string
@@ -202,15 +203,19 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	if t.Thumbnail != "" {
 		thumb = fmt.Sprintf("\n<thumb>%s</thumb>", t.Thumbnail)
 	}
+	category := ""
+	if t.Category != "" {
+		category = fmt.Sprintf("\n<category>%s</category>", t.Category)
+	}
 	templateText := fmt.Sprintf(`<item>
 	<title><![CDATA[%s]]></title>
 	<link><![CDATA[%s]]></link>
-	<guid><![CDATA[%s]]></guid>%s
+	<guid><![CDATA[%s]]></guid>%s%s
 	<pubDate>%s</pubDate>
 	<description>
 	<![CDATA[%s]]>
 	</description>
-</item>`, t.Title, t.Link, guid, thumb, t.PubDate, t.Description)
+</item>`, t.Title, t.Link, guid, thumb,category, t.PubDate, t.Description)
 	return template.New(templateName).Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
 		"timeFromStr": tmplFuncDateFromStr,
 		"timeToStr":   tmpFuncDateToStr,

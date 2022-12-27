@@ -284,9 +284,9 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 				item[k] = selector.getKey(s)
 			}
 			if r.repository != nil {
-				isExists, err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
-				if err != nil {
-					logrus.Error(err)
+				isExists, _err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
+				if _err != nil {
+					logrus.Error(_err)
 					return
 				}
 				if isExists {
@@ -325,15 +325,15 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 				}
 			}
 			var tpl bytes.Buffer
-			err = r.itemTemplate.Execute(&tpl, item)
-			if err != nil {
-				logrus.Error(err)
+			_err := r.itemTemplate.Execute(&tpl, item)
+			if _err != nil {
+				logrus.Error(_err)
 				return
 			}
 			itemEntity := Item{}
-			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
-			if err != nil {
-				logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
+			_err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
+			if _err != nil {
+				logrus.Errorf("decode item temp fail:%v:\n%s", _err, tpl.String())
 			}else{
 				itemEntity.Mk = fmt.Sprint(item[r.Key])
 				itemEntity.Channel = r.channel

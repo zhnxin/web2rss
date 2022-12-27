@@ -334,11 +334,11 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 			err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 			if err != nil {
 				logrus.Errorf("decode item temp fail:%v:\n%s", err, tpl.String())
-				return
+			}else{
+				itemEntity.Mk = fmt.Sprint(item[r.Key])
+				itemEntity.Channel = r.channel
+				items = append(items, &itemEntity)
 			}
-			itemEntity.Mk = fmt.Sprint(item[r.Key])
-			itemEntity.Channel = r.channel
-			items = append(items, &itemEntity)
 		}(s)
 	})
 	wait.Wait()
@@ -371,7 +371,7 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 				if e == nil {
 					break
 				} else {
-					logrus.Infof("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
+					logrus.Debugf("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
 					time.Sleep(time.Second)
 				}
 			}

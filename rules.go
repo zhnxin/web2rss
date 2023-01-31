@@ -483,7 +483,6 @@ func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {
 		pattern := regexp.MustCompilePOSIX(`src {0,1}= {0,1}['"]([^'"]+)['"]`)
 		for _,item := range items{
 			toReplace:=map[string]bool{}
-			logrus.Info(item.Description.String())
 			matches := pattern.FindAllStringSubmatch(item.Description.String(), -1)
 			if len(matches) > 0{
 				for _,strList := range matches{

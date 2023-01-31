@@ -480,6 +480,32 @@ func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {
 	pubData:= time.Now()
 	if len(items) > 0 {
 		pubData = items[0].PubDate
+		pattern := regexp.MustCompilePOSIX(`src {0,1}= {0,1}['"]([^'"]+)['"]`)
+		for _,item := range items{
+			toReplace:=map[string]bool{}
+			logrus.Info(item.Description.String())
+			matches := pattern.FindAllStringSubmatch(item.Description.String(), -1)
+			if len(matches) > 0{
+				for _,strList := range matches{
+					for _,strItem := range strList[1:]{
+						if !strings.HasPrefix(strItem, "http"){
+							toReplace[strItem] = true
+						}
+					}
+				}
+			}
+			if len(toReplace) > 0{
+				descContent := item.Description.String()
+				for strItem := range toReplace {
+					if strings.HasPrefix(strItem, "/"){
+						descContent = strings.ReplaceAll(descContent, strItem, c.Desc.Link + strItem)
+					}else{
+						descContent = strings.ReplaceAll(descContent, strItem, c.Desc.Link +"/" +strItem)
+					}
+				}
+				item.Description.Content = descContent
+			}
+		}
 	}
 	return NewRssChannel(c.Desc.Title,c.Desc.Language,c.Desc.Generator,c.Desc.Description,c.Desc.Link,pubData,items)
 }

@@ -15,16 +15,14 @@ import (
 	ants "github.com/panjf2000/ants/v2"
 	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
 
 var (
 	proxyUrl       string
-	rssTemplate, _ = template.New("RssTemplate").Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
-		"timeFromStr": tmplFuncDateFromStr,
-		"timeToStr":   tmpFuncDateToStr,
-	}).Parse(`
+	rssTemplate, _ = generateTemplate("RssTemplate", `
 <rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
 	<channel>
 	<title>{{.Desc.Title}}</title>
@@ -48,7 +46,6 @@ var (
 	</channel>
 </rss>`)
 )
-
 func SetProxy(proxy string) {
 	proxyUrl = proxy
 }
@@ -160,8 +157,19 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 		switch e.Attr {
 		case "html":
 			text, _ = es.Html()
+		case "out_html":
+			text, _ = goquery.OuterHtml(es)
 		case "text", "":
 			text = es.Text()
+		case "element_text":
+			var buf bytes.Buffer
+			for _, n := range es.Nodes {
+				if n.Type == html.TextNode {
+					// Keep newlines and spaces, like jQuery
+					buf.WriteString(n.Data)
+				}
+			}
+			text = buf.String()
 		default:
 			var isExists bool
 			text, isExists = es.Attr(e.Attr)
@@ -178,10 +186,10 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 				logrus.Debug(text)
 			}
 		}
-		if e.Attr != "html" {
-			res = append(res, EncodeStrForXml(text))
-		} else {
+		if strings.HasSuffix(e.Attr, "html"){
 			res = append(res, text)
+		} else {
+			res = append(res, EncodeStrForXml(text))
 		}
 	})
 	switch len(res) {
@@ -216,10 +224,7 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	<![CDATA[%s]]>
 	</description>
 </item>`, t.Title, t.Link, guid, thumb,category, t.PubDate, t.Description)
-	return template.New(templateName).Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
-		"timeFromStr": tmplFuncDateFromStr,
-		"timeToStr":   tmpFuncDateToStr,
-	}).Parse(templateText)
+	return generateTemplate(templateName, templateText)
 }
 
 func (r *Rule) generateReqClient(url string, isExtraReq bool) *gorequest.SuperAgent {
@@ -248,7 +253,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 	items = []*Item{}
 	var extraUrlTmp *template.Template
 	if r.ExtraSource != "" {
-		extraUrlTmp, err = template.New("").Funcs(sprig.TxtFuncMap()).Parse(r.ExtraSource)
+		extraUrlTmp, err =  template.New("").Funcs(sprig.TxtFuncMap()).Parse(r.ExtraSource)
 		if err != nil {
 			return nil, fmt.Errorf("generate template for extraUrl fail:%v", err)
 		}

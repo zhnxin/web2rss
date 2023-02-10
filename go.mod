@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
-	github.com/PuerkitoBio/goquery v1.7.1
+	github.com/PuerkitoBio/goquery v1.8.0
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/elazarl/goproxy v0.0.0-20210801061803-8e322dfb79c4 // indirect
@@ -22,6 +22,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/zhnxin/common-go v0.0.0-20210305033543-30455367e6d2
 	github.com/zouyx/agollo/v3 v3.4.5
+	golang.org/x/net v0.0.0-20210916014120-12bc252f5db8
 	golang.org/x/text v0.3.7
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	moul.io/http2curl v1.0.0 // indirect

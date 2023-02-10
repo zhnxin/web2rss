@@ -1,9 +1,13 @@
 package main
 
 import (
+	"reflect"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
+
+	"github.com/Masterminds/sprig"
 )
 
 var (
@@ -24,8 +28,8 @@ var (
 		"H":  "15",
 		"M":  "4",
 		"S":  "5",
-		"MM":  "04",
-		"SS":  "05",
+		"MM": "04",
+		"SS": "05",
 	}
 )
 
@@ -64,4 +68,21 @@ func tmpFuncDateToStr(layer string, t time.Time) string {
 		return ""
 	}
 	return t.Format(tmpGenerateTimeFormat(layer))
+}
+
+func tmpFuncIsList(value interface{}) bool {
+	switch reflect.TypeOf(value).Kind() {
+	case reflect.Slice:
+		return true
+	default:
+		return false
+	}
+}
+
+func generateTemplate(tempName, tempContext string) (*template.Template, error) {
+	return template.New(tempName).Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
+		"timeFromStr": tmplFuncDateFromStr,
+		"timeToStr":   tmpFuncDateToStr,
+		"isList":tmpFuncIsList,
+	}).Parse(tempContext)
 }

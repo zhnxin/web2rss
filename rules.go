@@ -168,6 +168,14 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 					// Keep newlines and spaces, like jQuery
 					buf.WriteString(n.Data)
 				}
+				if n.FirstChild != nil {
+					for c := n.FirstChild; c != nil; c = c.NextSibling {
+						if c.Type == html.TextNode {
+							// Keep newlines and spaces, like jQuery
+							buf.WriteString(c.Data)
+						}
+					}
+				}
 			}
 			text = buf.String()
 		default:

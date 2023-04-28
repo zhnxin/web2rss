@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"encoding/xml"
@@ -97,6 +98,14 @@ func (r *Repository) Exists(channel, key string) (bool, error) {
 		r.keySetCache.Set(cacheKey, true, cache.DefaultExpiration)
 	}
 	return ok, err
+}
+func(r *Repository) ClearCache(channel string){
+	cacheKey := channel + ":"
+	for k,_ := range r.keySetCache.Items(){
+		if strings.HasPrefix(k, cacheKey){
+			r.keySetCache.Delete(k)
+		}
+	}
 }
 
 func (r *Repository) FindItem(channel, searchKey string, pageSize, pageIndex int) ([]Item, error) {

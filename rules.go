@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"plugin"
 	"regexp"
 	"strings"
 	"sync"
@@ -55,6 +56,7 @@ type (
 		ItemCount int
 		Period    int
 		DBless bool
+		DisableUpdate bool
 		Desc FeedDesc
 		Rule Rule
 	}
@@ -81,6 +83,7 @@ type (
 		ExtraConfig        map[string]string
 		KeyParseConf       map[string]ElementSelector
 		ExtraKeyParseConf  map[string]ElementSelector
+		ExtraKeyParsePlugin string
 		TemplateConfig     ItemTemplate
 		itemTemplate       *template.Template
 		channel            string
@@ -108,6 +111,7 @@ type (
 		Regex   string
 		KeyPath []string
 	}
+	ExtraKeyParseFunc = func(client *gorequest.SuperAgent) (map[string]interface{},error)
 )
 
 func NewElementSelector(selector, attr, regex string) ElementSelector {
@@ -313,34 +317,60 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 					logrus.Error(err)
 				} else {
 					extraReq := r.generateReqClient(tpl.String(), true)
-					extraRes, _, errs := extraReq.End()
-					if len(errs) > 0 {
-						logrus.Error(errs)
-						return
-					} else {
-						var extraDoc *goquery.Document
-						switch strings.ToLower(r.Encoding) {
-						case "gbk", "gb10830":
-							extraDoc, err = goquery.NewDocumentFromReader(transform.NewReader(extraRes.Body,
-								simplifiedchinese.GB18030.NewDecoder()))
-						default:
-							extraDoc, err = goquery.NewDocumentFromReader(extraRes.Body)
-						}
-						if err != nil {
+					if len(r.ExtraKeyParsePlugin) > 0{
+						extraPlugin,err := plugin.Open(r.ExtraKeyParsePlugin)
+						if err !=nil{
 							logrus.Error(err)
-						} else {
-							for k, selector := range r.ExtraKeyParseConf {
-								item[k] = selector.getKeyFromDoc(extraDoc)
+							return
+						}
+						pluginF,err := extraPlugin.Lookup("ExtraKeyParseFunc")
+						if err != nil{
+							logrus.Error(err)
+							return
+						}
+						pluginFunc,ok := pluginF.(ExtraKeyParseFunc)
+						if ok {
+							extraItem,err := pluginFunc(extraReq)
+							if err != nil{
+								logrus.Error(err)
+								return
 							}
+							for k,v := range extraItem{
+								item[k] = v
+							}
+						}else{
+							logrus.Error("插件加载异常：未实现ExtraKeyParseFunc方法")
 						}
 
+					}else{
+						extraRes, _, errs := extraReq.End()
+						if len(errs) > 0 {
+							logrus.Error(errs)
+							return
+						} else {
+							var extraDoc *goquery.Document
+							switch strings.ToLower(r.Encoding) {
+							case "gbk", "gb10830":
+								extraDoc, err = goquery.NewDocumentFromReader(transform.NewReader(extraRes.Body,
+									simplifiedchinese.GB18030.NewDecoder()))
+							default:
+								extraDoc, err = goquery.NewDocumentFromReader(extraRes.Body)
+							}
+							if err != nil {
+								logrus.Error(err)
+							} else {
+								for k, selector := range r.ExtraKeyParseConf {
+									item[k] = selector.getKeyFromDoc(extraDoc)
+								}
+							}
+						}
 					}
 				}
 			}
 			var tpl bytes.Buffer
 			_err := r.itemTemplate.Execute(&tpl, item)
 			if _err != nil {
-				logrus.Error(_err)
+				logrus.Errorf("render rss xml fail: %s:%+v",_err.Error(),item)
 				return
 			}
 			itemEntity := Item{}

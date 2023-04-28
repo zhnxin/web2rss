@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/Masterminds/sprig"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -79,10 +82,47 @@ func tmpFuncIsList(value interface{}) bool {
 	}
 }
 
+func currentBeforeCn(timeDesc string) (time.Time,error){
+	if len(timeDesc) < 1{
+		return time.Now(),fmt.Errorf("getCurrentBeforeCn: 空字符串")
+	}
+	pattern := regexp.MustCompile(`^(\d+)([^\-\d])`)
+	matchers := pattern.FindAllStringSubmatch(timeDesc,-1)
+	if len(matchers) == 1 && len(matchers[0]) == 3{
+		currentTime := time.Now()
+		num,err := strconv.Atoi(matchers[0][1])
+		if err != nil{
+			logrus.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
+			return currentTime,fmt.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
+		}
+		if matchers[0][2] == "秒"{
+			return currentTime.Add(- time.Second * time.Duration(num)),nil
+		}else if matchers[0][2] == "分"{
+			return currentTime.Add(- time.Minute * time.Duration(num)),nil
+		}else if matchers[0][2] == "小" || matchers[0][2] == "时"{
+			return currentTime.Add(- time.Hour * time.Duration(num)),nil
+		}else if matchers[0][2] == "天"{
+			return currentTime.AddDate(0, 0, - num),nil
+		}else if matchers[0][2] == "月"{
+			return currentTime.AddDate(0, - num, 0),nil
+		}
+		logrus.Errorf("getCurrentBeforeCn: 转换失败：%s",timeDesc)
+		return currentTime,fmt.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
+	}
+	dataPattern := regexp.MustCompile(`\d+-\d+-\d+`)
+	if dataPattern.MatchString(timeDesc){
+		return tmplFuncDateFromStr("2006-m-d",timeDesc),nil
+	}
+	logrus.Errorf("getCurrentBeforeCn: 转换失败：%s",timeDesc)
+	return time.Now(),fmt.Errorf("转换失败：未匹配任一规则: %s",timeDesc )
+	
+}
+
 func generateTemplate(tempName, tempContext string) (*template.Template, error) {
 	return template.New(tempName).Funcs(sprig.TxtFuncMap()).Funcs(map[string]interface{}{
 		"timeFromStr": tmplFuncDateFromStr,
 		"timeToStr":   tmpFuncDateToStr,
+		"currentBeforeCn":currentBeforeCn,
 		"isList":tmpFuncIsList,
 	}).Parse(tempContext)
 }

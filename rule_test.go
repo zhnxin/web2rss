@@ -16,3 +16,15 @@ func TestSelector(t *testing.T) {
 		t.Log(tmpFuncDateToStr("RFC3339",ts))
 	}
 }
+
+func TestCurrentTimeDesc(t *testing.T){
+	testT := func(timeDesc string){
+		tr,err :=currentBeforeCn(timeDesc)
+		if err !=nil{
+			t.Error(err.Error())
+		}
+		t.Logf("%s → %s",timeDesc,tmpFuncDateToStr("2006-m-d H:M:SS",tr))
+	}
+	testT("2021-8-4")
+	testT("2021-8-19")
+}

@@ -305,22 +305,31 @@ func main() {
 		}
 		targetChannel := ""
 		if len(signals) > 0 {
-			targetChannel = signals[0]
+			targetChannel = strings.Join(signals,",")
 		}
-		CONFIG.LoadConfig(BASE_CONF.ConfigDir, targetChannel)
-		if err = CONFIG.Check(repository); err != nil {
-			return err
+		for _,channelName := range strings.Split(targetChannel,","){	
+			CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
+			if err = CONFIG.Check(repository); err != nil {
+				return err
+			}
+			repository.ClearCache(targetChannel)
+			updateChannel <- CmdSignal{Channel: channelName}
 		}
-		updateChannel <- CmdSignal{Channel: targetChannel}
+		
 		return err
 	})
 	server.SetSignalHandlerFunc("update", func(s *common.UnixSocketServer, c net.Conn, signals ...string) error {
 		_, serr := fmt.Fprintf(c, "update:%d", os.Getpid())
+		if err != nil {
+			return serr
+		}
 		targetChannel := ""
 		if len(signals) > 0 {
-			targetChannel = signals[0]
+			targetChannel = strings.Join(signals,",")
 		}
-		updateChannel <- CmdSignal{Channel: targetChannel}
+		for _,channelName := range strings.Split(targetChannel,","){	
+			updateChannel <- CmdSignal{Channel: channelName}
+		}
 		return serr
 	})
 	channelUpdateSchedule := common.NewSchedule()
@@ -348,7 +357,7 @@ func main() {
 			channelName := targetChannel.(string)
 			channelConf, ok := CONFIG.Get(channelName)
 			if ok {
-				if channelConf.DBless{
+				if channelConf.DBless || channelConf.DisableUpdate {
 					continue
 				}
 				go func(c *ChannelConf) {

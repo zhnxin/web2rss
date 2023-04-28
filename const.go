@@ -38,7 +38,7 @@ const htmlTmpl = `<!DOCTYPE html>
         </thead>
         <tbody>
             {{range .}}<tr>
-                <td>{{.Item}}</td>
+                <td> <a href='/html/{{.Item}}' >{{.Item}}</a></td>
                 <td>{{.T.Format "2006-01-02T15:04:05Z07:00"}}</td>
             </tr>
             {{end}}
@@ -47,3 +47,47 @@ const htmlTmpl = `<!DOCTYPE html>
 </body>
 
 </html>`
+
+const channelTableHtml = `
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>channel</title>
+</head>
+
+<body>
+    <ul>
+        {{range .}}
+            <li class="column">
+                <a href="/html/{{.Channel}}/{{.Id}}">{{.Title}}</a>
+                <span>{{.PubDate}}</span>
+            </li>
+        {{end}}
+    </ul>
+</body>
+
+</html>
+`
+const itemDetailHtml = `
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+</head>
+
+<body>
+    <h3>{{.Title}}</h3>
+    {{if .Thumb }}<img src="{{.Thumb }}" />{{end}}
+    {{.Description.Content}}
+</body>
+
+</html>
+`

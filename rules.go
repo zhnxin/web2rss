@@ -495,7 +495,7 @@ func (c *ChannelConf) Update() error {
 	return err
 }
 
-func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, error) {
+func (c *ChannelConf) Find(searchKey string, pageSize, pageIndex int)([]Item, error){
 	if c.DBless {
 		res, err := c.Rule.GenerateItem()
 		if err != nil {
@@ -505,7 +505,7 @@ func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, 
 		for i,d := range res{
 			items[i] = *d
 		}
-		return c.RssRenderItem(items)
+		return items,nil
 	}else{
 		limit := c.ItemCount
 		if pageSize > 0 {
@@ -515,8 +515,16 @@ func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, 
 		if err != nil {
 			return nil, err
 		}
-		return c.RssRenderItem(items)
+		return items,nil
 	}
+}
+
+func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, error) {
+	items,err := c.Find(searchKey,pageSize,pageIndex);
+	if err != nil{
+		return nil,err
+	}
+	return c.RssRenderItem(items)
 }
 
 func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {

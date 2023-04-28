@@ -125,6 +125,12 @@ func (r *Repository) FindItem(channel, searchKey string, pageSize, pageIndex int
 	return items, err
 }
 
+func (r *Repository) FindById(id int64) (Item,error){
+	item := Item{}
+	_,err := r.engine.Table(&item).Where("id = ?",id).Get(&item)
+	return item,err
+}
+
 func (r *Repository) Save(items []*Item) error {
 	if len(items) < 1 {
 		return nil

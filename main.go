@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -305,9 +306,9 @@ func main() {
 		}
 		targetChannel := ""
 		if len(signals) > 0 {
-			targetChannel = strings.Join(signals,",")
+			targetChannel = strings.Join(signals, ",")
 		}
-		for _,channelName := range strings.Split(targetChannel,","){	
+		for _, channelName := range strings.Split(targetChannel, ",") {
 			CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
 			if err = CONFIG.Check(repository); err != nil {
 				return err
@@ -315,7 +316,7 @@ func main() {
 			repository.ClearCache(targetChannel)
 			updateChannel <- CmdSignal{Channel: channelName}
 		}
-		
+
 		return err
 	})
 	server.SetSignalHandlerFunc("update", func(s *common.UnixSocketServer, c net.Conn, signals ...string) error {
@@ -325,9 +326,9 @@ func main() {
 		}
 		targetChannel := ""
 		if len(signals) > 0 {
-			targetChannel = strings.Join(signals,",")
+			targetChannel = strings.Join(signals, ",")
 		}
-		for _,channelName := range strings.Split(targetChannel,","){	
+		for _, channelName := range strings.Split(targetChannel, ",") {
 			updateChannel <- CmdSignal{Channel: channelName}
 		}
 		return serr
@@ -338,7 +339,7 @@ func main() {
 			if cmdS.Channel == "" {
 				channelUpdateSchedule.Clear()
 				for _, channel := range CONFIG.Channel {
-					if channel.DBless{
+					if channel.DBless {
 						continue
 					}
 					channelUpdateSchedule.Add(time.Now().Add(time.Second), channel.Desc.Title)
@@ -410,6 +411,55 @@ func main() {
 			fileName = append(fileName, k)
 		}
 		ctx.JSON(200, gin.H{"rss": fileName})
+	})
+	route.GET("/html/:channel", func(ctx *gin.Context) {
+		channelName := ctx.Param("channel")
+		channel, ok := CONFIG.channelMap[channelName]
+		if !ok {
+			_ = ctx.AbortWithError(404, fmt.Errorf("channelName %s not found", channelName))
+			return
+		}
+		query := struct {
+			SearchKey string `form:"s"`
+			PageIndex int    `form:"p"`
+			PageSize  int    `form:"size"`
+		}{}
+		ctx.BindQuery(&query)
+		if query.PageIndex < 1 {
+			query.PageIndex = 1
+		}
+		items, err := channel.Find(query.SearchKey, query.PageSize, query.PageIndex)
+		if err != nil {
+			_ = ctx.AbortWithError(500, err)
+			return
+		}
+		tmpl, err := template.New("channelTableHtml").Parse(channelTableHtml)
+		if err != nil {
+			logrus.Error(err)
+			ctx.JSON(500, gin.H{"err": err.Error()})
+			return
+		}
+		_ = tmpl.Execute(ctx.Writer, items)
+	})
+	route.GET("/html/:channel/:id", func(ctx *gin.Context){
+		idStr := ctx.Param("id")
+		id, err := strconv.ParseInt(idStr,10,64)
+		if err!=nil{
+			_ = ctx.AbortWithError(500, err)
+			return
+		}
+		item,err := repository.FindById(id)
+		if err!=nil{
+			_ = ctx.AbortWithError(500, err)
+			return
+		}
+		tmpl, err := template.New("itemDetailHtml").Parse(itemDetailHtml)
+		if err != nil {
+			logrus.Error(err)
+			ctx.JSON(500, gin.H{"err": err.Error()})
+			return
+		}
+		_ = tmpl.Execute(ctx.Writer, item)
 	})
 	route.GET("/schedule", func(ctx *gin.Context) {
 		if strings.Contains(ctx.GetHeader("Accept"), "text/html") {

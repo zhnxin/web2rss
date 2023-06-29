@@ -46,19 +46,21 @@ var (
 	{{end}}
 	</channel>
 </rss>`)
+	src_addr_pattern = regexp.MustCompilePOSIX(`src {0,1}= {0,1}['"]([^'"]+)['"]`)
 )
+
 func SetProxy(proxy string) {
 	proxyUrl = proxy
 }
 
 type (
 	ChannelConf struct {
-		ItemCount int
-		Period    int
-		DBless bool
+		ItemCount     int
+		Period        int
+		DBless        bool
 		DisableUpdate bool
-		Desc FeedDesc
-		Rule Rule
+		Desc          FeedDesc
+		Rule          Rule
 	}
 	FeedDesc struct {
 		Title       string
@@ -70,24 +72,24 @@ type (
 		Link        string
 	}
 	Rule struct {
-		GroutineCount int
-		Encoding           string
-		TocUrl             string
-		TocUrlList         []string
-		ItemSelector       string
-		ExtraSource        string
-		Headers            map[string]string
-		ExtraSourceHeaders map[string]string
-		NoProxy            bool
-		Key                string
-		ExtraConfig        map[string]string
-		KeyParseConf       map[string]ElementSelector
-		ExtraKeyParseConf  map[string]ElementSelector
+		GroutineCount       int
+		Encoding            string
+		TocUrl              string
+		TocUrlList          []string
+		ItemSelector        string
+		ExtraSource         string
+		Headers             map[string]string
+		ExtraSourceHeaders  map[string]string
+		NoProxy             bool
+		Key                 string
+		ExtraConfig         map[string]string
+		KeyParseConf        map[string]ElementSelector
+		ExtraKeyParseConf   map[string]ElementSelector
 		ExtraKeyParsePlugin string
-		TemplateConfig     ItemTemplate
-		itemTemplate       *template.Template
-		channel            string
-		repository         *Repository
+		TemplateConfig      ItemTemplate
+		itemTemplate        *template.Template
+		channel             string
+		repository          *Repository
 	}
 	JsonApiSource struct {
 		Link         string
@@ -100,7 +102,7 @@ type (
 		Description string
 		PubDate     string
 		Thumbnail   string
-		Category 	string
+		Category    string
 	}
 	ElementSelector struct {
 		Selector string
@@ -111,7 +113,7 @@ type (
 		Regex   string
 		KeyPath []string
 	}
-	ExtraKeyParseFunc = func(client *gorequest.SuperAgent) (map[string]interface{},error)
+	ExtraKeyParseFunc = func(client *gorequest.SuperAgent) (map[string]interface{}, error)
 )
 
 func NewElementSelector(selector, attr, regex string) ElementSelector {
@@ -198,7 +200,7 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 				logrus.Debug(text)
 			}
 		}
-		if strings.HasSuffix(e.Attr, "html"){
+		if strings.HasSuffix(e.Attr, "html") {
 			res = append(res, text)
 		} else {
 			res = append(res, EncodeStrForXml(text))
@@ -235,7 +237,7 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	<description>
 	<![CDATA[%s]]>
 	</description>
-</item>`, t.Title, t.Link, guid, thumb,category, t.PubDate, t.Description)
+</item>`, t.Title, t.Link, guid, thumb, category, t.PubDate, t.Description)
 	return generateTemplate(templateName, templateText)
 }
 
@@ -265,7 +267,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 	items = []*Item{}
 	var extraUrlTmp *template.Template
 	if r.ExtraSource != "" {
-		extraUrlTmp, err =  template.New("").Funcs(sprig.TxtFuncMap()).Parse(r.ExtraSource)
+		extraUrlTmp, err = template.New("").Funcs(sprig.TxtFuncMap()).Parse(r.ExtraSource)
 		if err != nil {
 			return nil, fmt.Errorf("generate template for extraUrl fail:%v", err)
 		}
@@ -317,32 +319,32 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 					logrus.Error(err)
 				} else {
 					extraReq := r.generateReqClient(tpl.String(), true)
-					if len(r.ExtraKeyParsePlugin) > 0{
-						extraPlugin,err := plugin.Open(r.ExtraKeyParsePlugin)
-						if err !=nil{
+					if len(r.ExtraKeyParsePlugin) > 0 {
+						extraPlugin, err := plugin.Open(r.ExtraKeyParsePlugin)
+						if err != nil {
 							logrus.Error(err)
 							return
 						}
-						pluginF,err := extraPlugin.Lookup("ExtraKeyParseFunc")
-						if err != nil{
+						pluginF, err := extraPlugin.Lookup("ExtraKeyParseFunc")
+						if err != nil {
 							logrus.Error(err)
 							return
 						}
-						pluginFunc,ok := pluginF.(ExtraKeyParseFunc)
+						pluginFunc, ok := pluginF.(ExtraKeyParseFunc)
 						if ok {
-							extraItem,err := pluginFunc(extraReq)
-							if err != nil{
+							extraItem, err := pluginFunc(extraReq)
+							if err != nil {
 								logrus.Error(err)
 								return
 							}
-							for k,v := range extraItem{
+							for k, v := range extraItem {
 								item[k] = v
 							}
-						}else{
+						} else {
 							logrus.Error("插件加载异常：未实现ExtraKeyParseFunc方法")
 						}
 
-					}else{
+					} else {
 						extraRes, _, errs := extraReq.End()
 						if len(errs) > 0 {
 							logrus.Error(errs)
@@ -370,14 +372,14 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 			var tpl bytes.Buffer
 			_err := r.itemTemplate.Execute(&tpl, item)
 			if _err != nil {
-				logrus.Errorf("render rss xml fail: %s:%+v",_err.Error(),item)
+				logrus.Errorf("render rss xml fail: %s:%+v", _err.Error(), item)
 				return
 			}
 			itemEntity := Item{}
 			_err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 			if _err != nil {
 				logrus.Errorf("decode item temp fail:%v:\n%s", _err, tpl.String())
-			}else{
+			} else {
 				itemEntity.Mk = fmt.Sprint(item[r.Key])
 				itemEntity.Channel = r.channel
 				items = append(items, &itemEntity)
@@ -400,32 +402,32 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 		err   error
 	})
 	wait := new(sync.WaitGroup)
-	groutineCount := r.GroutineCount;
-	if groutineCount < 1{
+	groutineCount := r.GroutineCount
+	if groutineCount < 1 {
 		groutineCount = 16
 	}
 	p, _ := ants.NewPoolWithFunc(groutineCount, func(i interface{}) {
 		url := i.(string)
 		defer wait.Done()
-			var e error
-			var res []*Item
-			for i := 0; i < 5; i++ {
-				res, e = r.spideToc(url)
-				if e == nil {
-					break
-				} else {
-					logrus.Debugf("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
-					time.Sleep(time.Second)
-				}
+		var e error
+		var res []*Item
+		for i := 0; i < 5; i++ {
+			res, e = r.spideToc(url)
+			if e == nil {
+				break
+			} else {
+				logrus.Debugf("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
+				time.Sleep(time.Second)
 			}
-			logrus.Debugf("download complete:%s", url)
-			resChan <- struct {
-				items []*Item
-				err   error
-			}{items: res, err: e}
+		}
+		logrus.Debugf("download complete:%s", url)
+		resChan <- struct {
+			items []*Item
+			err   error
+		}{items: res, err: e}
 	})
 	wait.Add(1)
-	go func(){
+	go func() {
 		defer wait.Done()
 		for tocUrl := range tocSet {
 			if tocUrl == "" {
@@ -437,7 +439,7 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 	}()
 	defer p.Release()
 	err := []error{}
-	go func(){
+	go func() {
 		wait.Wait()
 		close(resChan)
 	}()
@@ -494,19 +496,26 @@ func (c *ChannelConf) Update() error {
 	}
 	return err
 }
+func (c *ChannelConf) FindById(id int64) (Item, error) {
+	item, err := c.Rule.repository.FindById(id)
+	if err == nil {
+		c.injectHttpElementSrcAddrWithHostForItem(&item)
+	}
+	return item, err
+}
 
-func (c *ChannelConf) Find(searchKey string, pageSize, pageIndex int)([]Item, error){
+func (c *ChannelConf) Find(searchKey string, pageSize, pageIndex int) ([]Item, error) {
 	if c.DBless {
 		res, err := c.Rule.GenerateItem()
 		if err != nil {
 			return nil, err
 		}
-		items := make([]Item,len(res))
-		for i,d := range res{
+		items := make([]Item, len(res))
+		for i, d := range res {
 			items[i] = *d
 		}
-		return items,nil
-	}else{
+		return c.injectHttpElementSrcAddrWithHost(items), nil
+	} else {
 		limit := c.ItemCount
 		if pageSize > 0 {
 			limit = pageSize
@@ -515,47 +524,55 @@ func (c *ChannelConf) Find(searchKey string, pageSize, pageIndex int)([]Item, er
 		if err != nil {
 			return nil, err
 		}
-		return items,nil
+		return c.injectHttpElementSrcAddrWithHost(items), nil
 	}
 }
 
 func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, error) {
-	items,err := c.Find(searchKey,pageSize,pageIndex);
-	if err != nil{
-		return nil,err
+	items, err := c.Find(searchKey, pageSize, pageIndex)
+	if err != nil {
+		return nil, err
 	}
 	return c.RssRenderItem(items)
 }
-
-func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {
-	pubData:= time.Now()
-	if len(items) > 0 {
-		pubData = items[0].PubDate
-		pattern := regexp.MustCompilePOSIX(`src {0,1}= {0,1}['"]([^'"]+)['"]`)
-		for _,item := range items{
-			toReplace:=map[string]bool{}
-			matches := pattern.FindAllStringSubmatch(item.Description.String(), -1)
-			if len(matches) > 0{
-				for _,strList := range matches{
-					for _,strItem := range strList[1:]{
-						if !strings.HasPrefix(strItem, "http"){
-							toReplace[strItem] = true
-						}
-					}
+func (c *ChannelConf) injectHttpElementSrcAddrWithHostForItem(item *Item) {
+	toReplace := map[string]bool{}
+	matches := src_addr_pattern.FindAllStringSubmatch(item.Description.String(), -1)
+	if len(matches) > 0 {
+		for _, strList := range matches {
+			for _, strItem := range strList[1:] {
+				if !strings.HasPrefix(strItem, "http") {
+					toReplace[strItem] = true
 				}
-			}
-			if len(toReplace) > 0{
-				descContent := item.Description.String()
-				for strItem := range toReplace {
-					if strings.HasPrefix(strItem, "/"){
-						descContent = strings.ReplaceAll(descContent, strItem, c.Desc.Link + strItem)
-					}else{
-						descContent = strings.ReplaceAll(descContent, strItem, c.Desc.Link +"/" +strItem)
-					}
-				}
-				item.Description.Content = descContent
 			}
 		}
 	}
-	return NewRssChannel(c.Desc.Title,c.Desc.Language,c.Desc.Generator,c.Desc.Description,c.Desc.Link,pubData,items)
+	if len(toReplace) > 0 {
+		descContent := item.Description.String()
+		for strItem := range toReplace {
+			if strings.HasPrefix(strItem, "/") {
+				descContent = strings.ReplaceAll(descContent, strItem, c.Desc.Link+strItem)
+			} else {
+				descContent = strings.ReplaceAll(descContent, strItem, c.Desc.Link+"/"+strItem)
+			}
+		}
+		item.Description.Content = descContent
+	}
+}
+
+func (c *ChannelConf) injectHttpElementSrcAddrWithHost(items []Item) []Item {
+	if len(items) > 0 {
+		for _, item := range items {
+			c.injectHttpElementSrcAddrWithHostForItem(&item)
+		}
+	}
+	return items
+}
+
+func (c *ChannelConf) RssRenderItem(items []Item) ([]byte, error) {
+	pubData := time.Now()
+	if len(items) > 0 {
+		pubData = items[0].PubDate
+	}
+	return NewRssChannel(c.Desc.Title, c.Desc.Language, c.Desc.Generator, c.Desc.Description, c.Desc.Link, pubData, items)
 }

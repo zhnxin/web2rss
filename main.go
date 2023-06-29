@@ -441,15 +441,20 @@ func main() {
 		}
 		_ = tmpl.Execute(ctx.Writer, items)
 	})
-	route.GET("/html/:channel/:id", func(ctx *gin.Context){
+	route.GET("/html/:channel/:id", func(ctx *gin.Context) {
+		channel, ok := CONFIG.channelMap[ctx.Param("channel")]
+		if !ok {
+			_ = ctx.AbortWithError(404, fmt.Errorf("channelName %s not found", ctx.Param("channel")))
+			return
+		}
 		idStr := ctx.Param("id")
-		id, err := strconv.ParseInt(idStr,10,64)
-		if err!=nil{
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
 			_ = ctx.AbortWithError(500, err)
 			return
 		}
-		item,err := repository.FindById(id)
-		if err!=nil{
+		item, err := channel.FindById(id)
+		if err != nil {
 			_ = ctx.AbortWithError(500, err)
 			return
 		}

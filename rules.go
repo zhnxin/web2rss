@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"plugin"
 	"regexp"
 	"strings"
 	"sync"
@@ -59,6 +58,7 @@ type (
 		Period        int
 		DBless        bool
 		DisableUpdate bool
+		DisableImgSrcFix bool
 		Desc          FeedDesc
 		Rule          Rule
 	}
@@ -113,7 +113,6 @@ type (
 		Regex   string
 		KeyPath []string
 	}
-	ExtraKeyParseFunc = func(client *gorequest.SuperAgent) (map[string]interface{}, error)
 )
 
 func NewElementSelector(selector, attr, regex string) ElementSelector {
@@ -318,33 +317,19 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 				if err != nil {
 					logrus.Error(err)
 				} else {
-					extraReq := r.generateReqClient(tpl.String(), true)
 					if len(r.ExtraKeyParsePlugin) > 0 {
-						extraPlugin, err := plugin.Open(r.ExtraKeyParsePlugin)
+						extraItem, err := runGolangPlugin(r.ExtraKeyParsePlugin, tpl.String())
 						if err != nil {
 							logrus.Error(err)
 							return
 						}
-						pluginF, err := extraPlugin.Lookup("ExtraKeyParseFunc")
-						if err != nil {
-							logrus.Error(err)
-							return
-						}
-						pluginFunc, ok := pluginF.(ExtraKeyParseFunc)
-						if ok {
-							extraItem, err := pluginFunc(extraReq)
-							if err != nil {
-								logrus.Error(err)
-								return
-							}
+						if len(extraItem) > 0{
 							for k, v := range extraItem {
 								item[k] = v
 							}
-						} else {
-							logrus.Error("插件加载异常：未实现ExtraKeyParseFunc方法")
 						}
-
 					} else {
+						extraReq := r.generateReqClient(tpl.String(), true)
 						extraRes, _, errs := extraReq.End()
 						if len(errs) > 0 {
 							logrus.Error(errs)
@@ -504,6 +489,14 @@ func (c *ChannelConf) FindById(id int64) (Item, error) {
 	return item, err
 }
 
+func (c *ChannelConf) FindByMk(channel,key string) (Item,error){
+	item,err := c.Rule.repository.FindByMk(channel, key)
+	if err == nil {
+		c.injectHttpElementSrcAddrWithHostForItem(&item)
+	}
+	return item, err
+}
+
 func (c *ChannelConf) Find(searchKey string, pageSize, pageIndex int) ([]Item, error) {
 	if c.DBless {
 		res, err := c.Rule.GenerateItem()
@@ -536,13 +529,18 @@ func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, 
 	return c.RssRenderItem(items)
 }
 func (c *ChannelConf) injectHttpElementSrcAddrWithHostForItem(item *Item) {
+	if item == nil || item.Description == nil || len(item.Description.Content) < 1{
+		return
+	}
 	toReplace := map[string]bool{}
-	matches := src_addr_pattern.FindAllStringSubmatch(item.Description.String(), -1)
-	if len(matches) > 0 {
-		for _, strList := range matches {
-			for _, strItem := range strList[1:] {
-				if !strings.HasPrefix(strItem, "http") {
-					toReplace[strItem] = true
+	if ! c.DisableImgSrcFix{
+		matches := src_addr_pattern.FindAllStringSubmatch(item.Description.String(), -1)
+		if len(matches) > 0 {
+			for _, strList := range matches {
+				for _, strItem := range strList[1:] {
+					if !strings.HasPrefix(strItem, "http") {
+						toReplace[strItem] = true
+					}
 				}
 			}
 		}

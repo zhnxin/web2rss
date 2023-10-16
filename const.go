@@ -63,7 +63,7 @@ const channelTableHtml = `
     <ul>
         {{range .}}
             <li class="column">
-                <a href="/html/{{.Channel}}/{{.Id}}">{{.Title}}</a>
+                <a href="/html/{{.Channel}}/{{.Mk}}">{{.Title}}</a>
                 <span>{{.PubDate}}</span>
             </li>
         {{end}}
@@ -91,3 +91,14 @@ const itemDetailHtml = `
 
 </html>
 `
+const itemNotFoundPage=`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <a href="/html/%s">%s</a>
+</body>
+</html>`

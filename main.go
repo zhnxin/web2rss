@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/user"
 	"path"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -442,20 +441,25 @@ func main() {
 		_ = tmpl.Execute(ctx.Writer, items)
 	})
 	route.GET("/html/:channel/:id", func(ctx *gin.Context) {
-		channel, ok := CONFIG.channelMap[ctx.Param("channel")]
+		channelName := ctx.Param("channel")
+		channel, ok := CONFIG.channelMap[channelName]
 		if !ok {
-			_ = ctx.AbortWithError(404, fmt.Errorf("channelName %s not found", ctx.Param("channel")))
+			_ = ctx.AbortWithError(404, fmt.Errorf("channelName %s not found", channelName))
 			return
 		}
 		idStr := ctx.Param("id")
-		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
 			_ = ctx.AbortWithError(500, err)
 			return
 		}
-		item, err := channel.FindById(id)
+		item, err := channel.FindByMk(ctx.Param("channel"),idStr)
 		if err != nil {
 			_ = ctx.AbortWithError(500, err)
+			return
+		}
+		if item.Id == 0 {
+			ctx.Status(404)
+			ctx.Writer.WriteString(fmt.Sprintf(itemNotFoundPage, channel.Rule.channel,channel.Desc.Title))
 			return
 		}
 		tmpl, err := template.New("itemDetailHtml").Parse(itemDetailHtml)

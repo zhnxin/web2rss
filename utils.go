@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/Masterminds/sprig"
 	"github.com/sirupsen/logrus"
+	libs "github.com/vadv/gopher-lua-libs"
+	lua "github.com/yuin/gopher-lua"
+	query "github.com/zhnxin/glua-query"
+)
+type(
+	ExtraKeyParseFunc = func(addr string) ([]byte, error)
 )
 
 var (
@@ -125,4 +132,29 @@ func generateTemplate(tempName, tempContext string) (*template.Template, error) 
 		"currentBeforeCn":currentBeforeCn,
 		"isList":tmpFuncIsList,
 	}).Parse(tempContext)
+}
+
+func runGolangPlugin(pluginPath,addr string)(map[string]interface{},error){
+	L := lua.NewState()
+	defer L.Close()
+	libs.Preload(L)
+	query.Preload(L)
+	if err := L.DoFile(pluginPath); err != nil{
+		return nil,err
+	}
+	if err := L.CallByParam(lua.P{
+		Fn: L.GetGlobal("GetContent"),
+		NRet: 1,
+		Protect: true,
+		}, lua.LString(addr)); err != nil {
+		return nil,err
+	}
+	ret := L.Get(-1) 
+	L.Pop(1)
+	if retV,ok := ret.(lua.LString);ok{
+		data := map[string]interface{}{}
+		err := json.Unmarshal([]byte(retV.String()),&data)
+		return data,err
+	}
+	return nil,fmt.Errorf("插件加载异常：未实现`function GetContent(addr string) [string,err]`方法")
 }

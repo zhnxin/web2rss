@@ -131,6 +131,12 @@ func (r *Repository) FindById(id int64) (Item,error){
 	return item,err
 }
 
+func (r *Repository) FindByMk(channel,mk string) (Item,error){
+	item := Item{}
+	_,err := r.engine.Table(&item).Where("channel = ? and mk = ?",channel,mk).Get(&item)
+	return item,err
+}
+
 func (r *Repository) Save(items []*Item) error {
 	if len(items) < 1 {
 		return nil

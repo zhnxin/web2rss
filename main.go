@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
-	"net"
 	"os"
 	"os/user"
 	"path"
@@ -14,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
 	common "github.com/zhnxin/common-go"
 	"github.com/zouyx/agollo/v3/component/log"
@@ -42,6 +41,7 @@ type (
 	BaseConfig struct {
 		Addr      string
 		Token     string
+		AdminToken string
 		ConfigDir string
 		userDir   string
 		Period    int
@@ -50,6 +50,16 @@ type (
 	}
 	CmdSignal struct {
 		Channel string
+	}
+	CmdResponseDto struct {
+		ErrCode int `json:"err_code"`
+		Message string `json:"message"`
+		Data int `json:"data"`
+	}
+	CmdRequestDto struct{
+		Cmd string `json:"cmd"`
+		Args string `json:"args"`
+		Token string `json:"token"`
 	}
 )
 
@@ -119,7 +129,7 @@ func (conf *Config) LoadConfig(dir string, target string) {
 		logrus.Infof("load config file: %s", target)
 		return
 	}
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
 		return
@@ -174,6 +184,24 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 	}
 
 }
+
+func do_command(cmd string,args string)(CmdResponseDto,error){
+	cmdBody := CmdRequestDto{
+		Cmd: cmd,
+		Args: args,
+		Token: BASE_CONF.AdminToken,
+	}
+	respBody := CmdResponseDto{}
+	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/web2rss/command").
+			Set("Content-Type", "application/json").
+			Send(cmdBody).
+			EndStruct(&respBody)
+	var err error
+	if len(errs) > 0{
+		err = errs[0]
+	}
+	return respBody,err
+}
 func initFunc() {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:   true,
@@ -214,7 +242,6 @@ func initFunc() {
 
 func main() {
 	initFunc()
-	server := common.NewUnixSocketServer(path.Join(BASE_CONF.userDir, SOCKET_FILE))
 	switch *Cmd {
 	case "start":
 		break
@@ -267,25 +294,40 @@ func main() {
 			fmt.Println(string(rawBody))
 		}
 		return
-	default:
-		responseBody, err := server.Dial(*Cmd + " " + *CHANNEL_NAME)
+	case "status":
+		resp,err := do_command("status", "")
 		if err != nil {
-			logrus.Fatal(err)
-		} else {
-			logrus.Info(string(responseBody))
+			fmt.Println("web2rss is not alive")
+			os.Exit(1)
+		}else{
+			logrus.Infof("PID: %d",resp.Data)
+		}
+		return
+	case "stop":
+		resp,err := do_command("stop", "")
+		if err != nil{
+			logrus.Fatalf("stop failed: %v",err)
+		}else{
+			if resp.ErrCode != 0{
+				logrus.Fatalf("stop failed: %s",resp.Message)
+			}else{
+				logrus.Infof("停止服务 PID: %d",resp.Data)
+			}
+		}
+		return
+	default:
+		resp,err := do_command(*Cmd,*CHANNEL_NAME)
+		if err != nil{
+			logrus.Fatalf("%v",err)
+		}else{
+			if(resp.ErrCode != 0){
+				logrus.Fatalf("%s",resp.Message)
+			}else{
+				logrus.Info(resp.Message)
+			}
 		}
 		return
 	}
-	go func() {
-		<-server.Stoped()
-		os.Exit(0)
-	}()
-	go func() {
-		if err := server.Listen(); err != nil {
-			//stop you daemon if necessary
-			logrus.Fatal(err)
-		}
-	}()
 	engine, err := xorm.NewEngine("sqlite3", path.Join(BASE_CONF.userDir, DATAFILE))
 	if err != nil {
 		logrus.Fatal(err)
@@ -298,40 +340,6 @@ func main() {
 		logrus.Fatal(err)
 	}
 	updateChannel := make(chan CmdSignal)
-	server.SetSignalHandlerFunc("reload", func(s *common.UnixSocketServer, c net.Conn, signals ...string) error {
-		_, err := fmt.Fprintf(c, "reload:%d", os.Getpid())
-		if err != nil {
-			return err
-		}
-		targetChannel := ""
-		if len(signals) > 0 {
-			targetChannel = strings.Join(signals, ",")
-		}
-		for _, channelName := range strings.Split(targetChannel, ",") {
-			CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
-			if err = CONFIG.Check(repository); err != nil {
-				return err
-			}
-			repository.ClearCache(targetChannel)
-			updateChannel <- CmdSignal{Channel: channelName}
-		}
-
-		return err
-	})
-	server.SetSignalHandlerFunc("update", func(s *common.UnixSocketServer, c net.Conn, signals ...string) error {
-		_, serr := fmt.Fprintf(c, "update:%d", os.Getpid())
-		if err != nil {
-			return serr
-		}
-		targetChannel := ""
-		if len(signals) > 0 {
-			targetChannel = strings.Join(signals, ",")
-		}
-		for _, channelName := range strings.Split(targetChannel, ",") {
-			updateChannel <- CmdSignal{Channel: channelName}
-		}
-		return serr
-	})
 	channelUpdateSchedule := common.NewSchedule()
 	go func() {
 		for cmdS := range updateChannel {
@@ -380,6 +388,49 @@ func main() {
 			_ = ctx.AbortWithError(403, fmt.Errorf("token is not match"))
 		}
 	})
+	route.PUT("web2rss/command",func(ctx *gin.Context) {
+		cmdBody := CmdRequestDto{}
+		err := ctx.BindJSON(&cmdBody)
+		if err != nil {
+			_ = ctx.AbortWithError(400, err)
+			return
+		}
+		if cmdBody.Token != BASE_CONF.AdminToken {
+			ctx.JSON(200, gin.H{"err_code":403,"message":"token is not match"})
+			return
+		}
+		switch cmdBody.Cmd {
+			case "reload":
+				for _, channelName := range strings.Split(cmdBody.Args, ",") {
+					CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
+					if err = CONFIG.Check(repository); err != nil {
+						_ = ctx.AbortWithError(400, err)
+						return
+					}
+					repository.ClearCache(channelName)
+					updateChannel <- CmdSignal{Channel: channelName}
+				}
+				ctx.JSON(200, gin.H{"err_code":0,"message":"ok"})
+			case "update":
+				for _, channelName := range strings.Split(cmdBody.Args, ",") {
+					updateChannel <- CmdSignal{Channel: channelName}
+				}
+				ctx.JSON(200, gin.H{"err_code":0,"message":"ok"})
+			case "stop":
+				ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+				go func(){
+					time.Sleep(time.Microsecond * 100)
+					logrus.Infof("web2rss(%d): 停止服务",os.Getpid())
+					os.Exit(0)
+				}()
+			case "alive","status":
+				ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+			default:
+				_ = ctx.AbortWithError(400, fmt.Errorf("cmd %s not support", cmdBody.Cmd))
+		}
+		
+	})
+
 	route.GET("/rss/:channel", func(ctx *gin.Context) {
 		channelName := ctx.Param("channel")
 		channel, ok := CONFIG.channelMap[channelName]
@@ -484,6 +535,7 @@ func main() {
 			ctx.JSON(200, channelUpdateSchedule.GetSchedule())
 		}
 	})
+	logrus.Infof("web2rss 开始服务: %d",os.Getpid())
 	if err = route.Run(BASE_CONF.Addr); err != nil {
 		logrus.Fatal(err)
 	}

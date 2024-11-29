@@ -14,7 +14,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	ants "github.com/panjf2000/ants/v2"
 	"github.com/parnurzeal/gorequest"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
@@ -128,7 +127,7 @@ func (e *ElementSelector) getKey(s *goquery.Selection) string {
 	if e.Selector != "" {
 		element = s.Find(e.Selector).First()
 		if element == nil {
-			logrus.Error("sub element not found for ", e.Selector)
+			LOGGER.Error("sub element not found for ", e.Selector)
 		}
 	}
 	switch e.Attr {
@@ -140,7 +139,7 @@ func (e *ElementSelector) getKey(s *goquery.Selection) string {
 		var isExists bool
 		text, isExists = element.Attr(e.Attr)
 		if !isExists {
-			logrus.Error("element and atrr not found in extra page for ", e.Selector)
+			LOGGER.Error("element and atrr not found in extra page for ", e.Selector)
 		}
 	}
 	if e.Regex != "" {
@@ -187,7 +186,7 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 			var isExists bool
 			text, isExists = es.Attr(e.Attr)
 			if !isExists {
-				logrus.Error("element and atrr not found in extra page for ", e.Selector)
+				LOGGER.Error("element and atrr not found in extra page for ", e.Selector)
 				return
 			}
 		}
@@ -196,7 +195,7 @@ func (e *ElementSelector) getKeyFromDoc(s *goquery.Document) interface{} {
 			if len(regexRes) > 1 {
 				text = regexRes[1]
 			} else {
-				logrus.Debug(text)
+				LOGGER.Debug(text)
 			}
 		}
 		if strings.HasSuffix(e.Attr, "html") {
@@ -304,7 +303,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 			if r.repository != nil {
 				isExists, _err := r.repository.Exists(r.channel, fmt.Sprint(fmt.Sprint(item[r.Key])))
 				if _err != nil {
-					logrus.Error(_err)
+					LOGGER.Error(_err)
 					return
 				}
 				if isExists {
@@ -315,12 +314,12 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 				var tpl bytes.Buffer
 				err := extraUrlTmp.Execute(&tpl, item)
 				if err != nil {
-					logrus.Error(err)
+					LOGGER.Error(err)
 				} else {
 					if len(r.ExtraKeyParsePlugin) > 0 {
 						extraItem, err := runGolangPlugin(r.ExtraKeyParsePlugin, tpl.String())
 						if err != nil {
-							logrus.Error(err)
+							LOGGER.Error(err)
 							return
 						}
 						if len(extraItem) > 0{
@@ -332,7 +331,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 						extraReq := r.generateReqClient(tpl.String(), true)
 						extraRes, _, errs := extraReq.End()
 						if len(errs) > 0 {
-							logrus.Error(errs)
+							LOGGER.Error(errs)
 							return
 						} else {
 							var extraDoc *goquery.Document
@@ -344,7 +343,7 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 								extraDoc, err = goquery.NewDocumentFromReader(extraRes.Body)
 							}
 							if err != nil {
-								logrus.Error(err)
+								LOGGER.Error(err)
 							} else {
 								for k, selector := range r.ExtraKeyParseConf {
 									item[k] = selector.getKeyFromDoc(extraDoc)
@@ -357,13 +356,13 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 			var tpl bytes.Buffer
 			_err := r.itemTemplate.Execute(&tpl, item)
 			if _err != nil {
-				logrus.Errorf("render rss xml fail: %s:%+v", _err.Error(), item)
+				LOGGER.Errorf("render rss xml fail: %s:%+v", _err.Error(), item)
 				return
 			}
 			itemEntity := Item{}
 			_err = xml.Unmarshal(tpl.Bytes(), &itemEntity)
 			if _err != nil {
-				logrus.Errorf("decode item temp fail:%v:\n%s", _err, tpl.String())
+				LOGGER.Errorf("decode item temp fail:%v:\n%s", _err, tpl.String())
 			} else {
 				itemEntity.Mk = fmt.Sprint(item[r.Key])
 				itemEntity.Channel = r.channel
@@ -401,11 +400,11 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			if e == nil {
 				break
 			} else {
-				logrus.Debugf("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
+				LOGGER.Debugf("请求失败，剩余重试次数（%d）:%s:%v", 4-i, url, e)
 				time.Sleep(time.Second)
 			}
 		}
-		logrus.Debugf("download complete:%s", url)
+		LOGGER.Debugf("download complete:%s", url)
 		resChan <- struct {
 			items []*Item
 			err   error
@@ -435,7 +434,7 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			items = append(items, res.items...)
 		}
 	}
-	logrus.Debugf("download completed:%s", r.channel)
+	LOGGER.Debugf("download completed:%s", r.channel)
 	if len(err) > 0 {
 		return nil, fmt.Errorf("更新失败:%v", err)
 	}
@@ -474,7 +473,7 @@ func (c *ChannelConf) Update() error {
 	if err != nil {
 		return fmt.Errorf("update item %v", err)
 	}
-	logrus.Infof("update %d for %s", len(res), c.Desc.Title)
+	LOGGER.Infof("update %d for %s", len(res), c.Desc.Title)
 	err = c.Rule.repository.Save(res)
 	if err != nil {
 		err = fmt.Errorf("store data fail:%v", err)

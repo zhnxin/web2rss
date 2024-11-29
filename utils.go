@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/sprig"
-	"github.com/sirupsen/logrus"
 	libs "github.com/vadv/gopher-lua-libs"
 	lua "github.com/yuin/gopher-lua"
 	query "github.com/zhnxin/glua-query"
@@ -99,7 +98,7 @@ func currentBeforeCn(timeDesc string) (time.Time,error){
 		currentTime := time.Now()
 		num,err := strconv.Atoi(matchers[0][1])
 		if err != nil{
-			logrus.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
+			LOGGER.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
 			return currentTime,fmt.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
 		}
 		if matchers[0][2] == "秒"{
@@ -113,14 +112,14 @@ func currentBeforeCn(timeDesc string) (time.Time,error){
 		}else if matchers[0][2] == "月"{
 			return currentTime.AddDate(0, - num, 0),nil
 		}
-		logrus.Errorf("getCurrentBeforeCn: 转换失败：%s",timeDesc)
+		LOGGER.Errorf("getCurrentBeforeCn: 转换失败：%s",timeDesc)
 		return currentTime,fmt.Errorf("getCurrentBeforeCn: 转换失败：%s: %s",timeDesc,err.Error())
 	}
 	dataPattern := regexp.MustCompile(`\d+-\d+-\d+`)
 	if dataPattern.MatchString(timeDesc){
 		return tmplFuncDateFromStr("2006-m-d",timeDesc),nil
 	}
-	logrus.Errorf("getCurrentBeforeCn: 转换失败：%s",timeDesc)
+	LOGGER.Errorf("getCurrentBeforeCn: 转换失败：%s",timeDesc)
 	return time.Now(),fmt.Errorf("转换失败：未匹配任一规则: %s",timeDesc )
 	
 }

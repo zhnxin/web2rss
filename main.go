@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"net/url"
 	"os"
+	"os/signal"
 	"os/user"
 	"path"
 	"strings"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
@@ -26,9 +30,13 @@ var (
 	CONF_DIR     = ".config"
 	USER_DIR     string
 	BASE_CONF    *BaseConfig
-	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update", "test")
+	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update","ws","log", "test")
 	CHANNEL_NAME = kingpin.Arg("channel", "command channel target").Default("").String()
 	OutputFile   = kingpin.Flag("output", "test output file path").Default("").Short('o').String()
+	WS_UPGRADER = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	   }
 )
 
 const SOCKET_FILE = ".web2rss.socket"
@@ -113,7 +121,7 @@ func (conf *Config) LoadConfig(dir string, target string) {
 	if target != "" {
 		cconf, err := loadChanalConf(path.Join(dir, target+".toml"))
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			return
 		}
 		isUpdate := false
@@ -126,7 +134,7 @@ func (conf *Config) LoadConfig(dir string, target string) {
 		if !isUpdate {
 			conf.Channel = append(conf.Channel, &cconf)
 		}
-		logrus.Infof("load config file: %s", target)
+		LOGGER.Infof("load config file: %s", target)
 		return
 	}
 	files, err := os.ReadDir(dir)
@@ -139,14 +147,14 @@ func (conf *Config) LoadConfig(dir string, target string) {
 		if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
 			cconf, err := loadChanalConf(path.Join(dir, f.Name()))
 			if err != nil {
-				logrus.Error(err)
+				LOGGER.Error(err)
 				return
 			}
 			if err != nil {
-				logrus.Error(err)
+				LOGGER.Error(err)
 				continue
 			}
-			logrus.Infof("load config file: %s", f.Name())
+			LOGGER.Infof("load config file: %s", f.Name())
 			conf.Channel = append(conf.Channel, &cconf)
 		}
 	}
@@ -176,15 +184,25 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 	}
 	switch conf.LogLevel {
 	case "DEBUG", "debug", "D", "d":
-		logrus.SetLevel(logrus.DebugLevel)
+		LOGGER.SetLevel(logrus.DebugLevel)
 	case "INFO", "I", "i", "info":
-		logrus.SetLevel(logrus.InfoLevel)
+		LOGGER.SetLevel(logrus.InfoLevel)
 	case "ERROR", "E", "e", "error", "ERR", "err":
-		logrus.SetLevel(logrus.ErrorLevel)
+		LOGGER.SetLevel(logrus.ErrorLevel)
 	}
 
 }
 
+func checkHealth() (int,error){
+	respBody := CmdResponseDto{}
+	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/health").
+		Set("Content-Type", "application/json").
+		EndStruct(&respBody)
+	if len(errs) > 0{
+		return 0,errs[0]
+	}
+	return respBody.Data,nil
+}
 func do_command(cmd string,args string)(CmdResponseDto,error){
 	cmdBody := CmdRequestDto{
 		Cmd: cmd,
@@ -192,7 +210,7 @@ func do_command(cmd string,args string)(CmdResponseDto,error){
 		Token: BASE_CONF.AdminToken,
 	}
 	respBody := CmdResponseDto{}
-	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/web2rss/command").
+	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/web2rss/signal").
 			Set("Content-Type", "application/json").
 			Send(cmdBody).
 			EndStruct(&respBody)
@@ -202,12 +220,68 @@ func do_command(cmd string,args string)(CmdResponseDto,error){
 	}
 	return respBody,err
 }
+
+func handleWSClient(){
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+
+	u := url.URL{Scheme: "ws", Host: BASE_CONF.Addr, Path: "/web2rss/ws"}
+	LOGGER.Infof("connecting to %s", u.String())
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		LOGGER.Fatal("dial:", err)
+	}
+	defer c.Close()
+
+	done := make(chan struct{})
+	reviceChannel := make(chan []byte)
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				fmt.Println("read:", err)
+				return
+			}
+			reviceChannel <- message
+		}
+	}()
+	scanner := bufio.NewScanner(os.Stdin)
+	inputChannel := make(chan string)
+	go func(){
+		for scanner.Scan(){
+			inputChannel <- scanner.Text()
+		}
+	}()
+	for {
+		select {
+		case <-done:
+			return
+		case t := <-inputChannel:
+			err := c.WriteMessage(websocket.TextMessage, []byte(t))
+			if err != nil {
+				LOGGER.Fatal("write:", err)
+				return
+			}
+		case m := <-reviceChannel:
+			fmt.Print(string(m))
+		case <-interrupt:
+			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				fmt.Println("write close:", err)
+				return
+			}
+			LOGGER.Info("exit……")
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+			}
+			return
+		}
+	}
+}
 func initFunc() {
-	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:   true,
-		TimestampFormat: time.RFC3339,
-		ForceColors:     true,
-	})
 	u, err := user.Current()
 	if err != nil {
 		panic("fail to read user dir")
@@ -247,22 +321,22 @@ func main() {
 		break
 	case "test":
 		if *CHANNEL_NAME == "" {
-			logrus.Error("<channel config file> is required for test")
+			LOGGER.Error("<channel config file> is required for test")
 			return
 		}
 		cconf, err := loadChanalConf(*CHANNEL_NAME)
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			return
 		}
 		err = cconf.CheckConf(nil)
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			return
 		}
 		items, err := cconf.Rule.GenerateItem()
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			return
 		}
 		itemList := make([]Item, len(items))
@@ -271,73 +345,64 @@ func main() {
 		}
 		rawBody, err := cconf.RssRenderItem(itemList)
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			return
 		}
 		if *OutputFile != "" {
 			outputfile, err := os.OpenFile(*OutputFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0655)
 			if err != nil {
-				logrus.Fatalf("open output file %s:%v", *OutputFile, err)
+				LOGGER.Fatalf("open output file %s:%v", *OutputFile, err)
 			}
 			_, err = outputfile.Write(rawBody)
 			if err != nil {
-				logrus.Fatalf("write output file %s:%v", *OutputFile, err)
+				LOGGER.Fatalf("write output file %s:%v", *OutputFile, err)
 			}
 			outputfile.Sync()
 			err = outputfile.Close()
 			if err != nil {
-				logrus.Fatalf("close output file %s:%v", *OutputFile, err)
+				LOGGER.Fatalf("close output file %s:%v", *OutputFile, err)
 			} else {
-				logrus.Info("output file: ", *OutputFile)
+				LOGGER.Info("output file: ", *OutputFile)
 			}
 		} else {
 			fmt.Println(string(rawBody))
 		}
 		return
 	case "status":
-		resp,err := do_command("status", "")
+		pid,err := checkHealth()
 		if err != nil {
 			fmt.Println("web2rss is not alive")
 			os.Exit(1)
 		}else{
-			logrus.Infof("PID: %d",resp.Data)
+			logrus.Infof("PID: %d",pid)
 		}
-		return
-	case "stop":
-		resp,err := do_command("stop", "")
-		if err != nil{
-			logrus.Fatalf("stop failed: %v",err)
-		}else{
-			if resp.ErrCode != 0{
-				logrus.Fatalf("stop failed: %s",resp.Message)
-			}else{
-				logrus.Infof("停止服务 PID: %d",resp.Data)
-			}
-		}
+		return	
+	case "ws","log":
+		handleWSClient()
 		return
 	default:
 		resp,err := do_command(*Cmd,*CHANNEL_NAME)
 		if err != nil{
-			logrus.Fatalf("%v",err)
+			LOGGER.Fatalf("%v",err)
 		}else{
 			if(resp.ErrCode != 0){
-				logrus.Fatalf("%s",resp.Message)
+				LOGGER.Fatalf("%s",resp.Message)
 			}else{
-				logrus.Info(resp.Message)
+				LOGGER.Info(resp.Message)
 			}
 		}
 		return
 	}
 	engine, err := xorm.NewEngine("sqlite3", path.Join(BASE_CONF.userDir, DATAFILE))
 	if err != nil {
-		logrus.Fatal(err)
+		LOGGER.Fatal(err)
 	}
 	repository := newRepository(engine)
 
 	CONFIG := &Config{}
 	CONFIG.LoadConfig(BASE_CONF.ConfigDir, "")
 	if err = CONFIG.Check(repository); err != nil {
-		logrus.Fatal(err)
+		LOGGER.Fatal(err)
 	}
 	updateChannel := make(chan CmdSignal)
 	channelUpdateSchedule := common.NewSchedule()
@@ -370,7 +435,7 @@ func main() {
 				}
 				go func(c *ChannelConf) {
 					if err := c.Update(); err != nil {
-						logrus.Errorf("update item for %s:%v", c.Desc.Title, err)
+						LOGGER.Errorf("update item for %s:%v", c.Desc.Title, err)
 					}
 				}(channelConf)
 				if channelConf.Period > 0 {
@@ -381,54 +446,122 @@ func main() {
 			}
 		}
 	}()
+	func_reload := func(channelList string) error{
+		for _, channelName := range strings.Split(channelList, ",") {
+			CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
+			if err = CONFIG.Check(repository); err != nil {
+				return err
+			}
+			repository.ClearCache(channelName)
+			updateChannel <- CmdSignal{Channel: channelName}
+		}
+		return nil;
+	}
+	func_update := func(channelList string){
+		for _, channelName := range strings.Split(channelList, ",") {
+			updateChannel <- CmdSignal{Channel: channelName}
+		}
+	}
+	func_stop := func(){
+			time.Sleep(time.Microsecond * 100)
+			LOGGER.Infof("web2rss(%d): 停止服务",os.Getpid())
+			os.Exit(0)
+		}
 	gin.SetMode("release")
+	gin.DefaultWriter = LOGGER.Writer()
 	route := gin.Default()
 	route.Use(func(ctx *gin.Context) {
 		if BASE_CONF.Token != "" && ctx.Query("token") != BASE_CONF.Token {
 			_ = ctx.AbortWithError(403, fmt.Errorf("token is not match"))
 		}
 	})
-	route.PUT("web2rss/command",func(ctx *gin.Context) {
-		cmdBody := CmdRequestDto{}
-		err := ctx.BindJSON(&cmdBody)
+	route.GET("health", func(ctx *gin.Context){
+		ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+	})
+	route.PUT("web2rss/signal", func(ctx *gin.Context){
+		reqBody := CmdRequestDto{}
+		err := ctx.BindJSON(&reqBody)
 		if err != nil {
 			_ = ctx.AbortWithError(400, err)
 			return
 		}
-		if cmdBody.Token != BASE_CONF.AdminToken {
-			ctx.JSON(200, gin.H{"err_code":403,"message":"token is not match"})
+		switch reqBody.Cmd {
+		case "reload":
+			err := func_reload(reqBody.Args)
+			if err != nil {
+				_ = ctx.AbortWithError(400, err)
+				return
+			}
+			ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+		case "update":
+			func_update(reqBody.Args)
+			ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+		case "stop":
+			go func_stop()
+			ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+		default:
+			ctx.JSON(400, gin.H{"err_code":400,"message":"unknown cmd","data":os.Getpid()})
+		}
+	})
+	route.GET("web2rss/ws",func(ctx *gin.Context) {
+		conn, err := WS_UPGRADER.Upgrade(ctx.Writer, ctx.Request, nil)
+		if err != nil {
+			LOGGER.Error(err)
 			return
 		}
-		switch cmdBody.Cmd {
-			case "reload":
-				for _, channelName := range strings.Split(cmdBody.Args, ",") {
-					CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
-					if err = CONFIG.Check(repository); err != nil {
+		connKey := fmt.Sprintf("%v",conn)
+		LOGGER.Infof("add websoket client: %s",connKey)
+		LOGGER.AddWriter(connKey,conn)
+		defer func(){
+			LOGGER.RemoveWriter(connKey)
+			conn.Close()
+			LOGGER.Infof("close websoket client: %s",connKey)
+		}()
+		for{
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					LOGGER.Error(err)
+				}
+				return
+			}
+			cmd := string(msg)
+			if cmd == ""{
+				conn.WriteMessage(websocket.TextMessage, []byte(">> cmd is empty\n"))
+				continue
+			}
+			cmdargs := strings.Split(cmd," ")
+			cmd = cmdargs[0]
+			args := ""
+			if len(cmdargs) > 1{
+				args = cmdargs[1]
+			}
+			switch cmd {
+				case "reload","r":
+					err :=func_reload(args)
+					if err!=nil{
 						_ = ctx.AbortWithError(400, err)
-						return
+						conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> 重新加载配置异常: %v\n",err)))
+					}else{
+						conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
 					}
-					repository.ClearCache(channelName)
-					updateChannel <- CmdSignal{Channel: channelName}
-				}
-				ctx.JSON(200, gin.H{"err_code":0,"message":"ok"})
-			case "update":
-				for _, channelName := range strings.Split(cmdBody.Args, ",") {
-					updateChannel <- CmdSignal{Channel: channelName}
-				}
-				ctx.JSON(200, gin.H{"err_code":0,"message":"ok"})
-			case "stop":
-				ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
-				go func(){
-					time.Sleep(time.Microsecond * 100)
-					logrus.Infof("web2rss(%d): 停止服务",os.Getpid())
-					os.Exit(0)
-				}()
-			case "alive","status":
-				ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
-			default:
-				_ = ctx.AbortWithError(400, fmt.Errorf("cmd %s not support", cmdBody.Cmd))
-		}
-		
+				case "update","u":
+					func_update(args)
+					conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
+				case "stop":
+					go func_stop()
+					conn.WriteMessage(websocket.CloseMessage, []byte{})
+					conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
+					return
+				case "alive","status":
+					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> pid: %d\n",os.Getpid())))
+				case "exit":
+					conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+					return
+				default:
+					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> cmd %s not support\n", cmd)))
+			}
+		}		
 	})
 
 	route.GET("/rss/:channel", func(ctx *gin.Context) {
@@ -485,7 +618,7 @@ func main() {
 		}
 		tmpl, err := template.New("channelTableHtml").Parse(channelTableHtml)
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			ctx.JSON(500, gin.H{"err": err.Error()})
 			return
 		}
@@ -515,7 +648,7 @@ func main() {
 		}
 		tmpl, err := template.New("itemDetailHtml").Parse(itemDetailHtml)
 		if err != nil {
-			logrus.Error(err)
+			LOGGER.Error(err)
 			ctx.JSON(500, gin.H{"err": err.Error()})
 			return
 		}
@@ -526,7 +659,7 @@ func main() {
 			ctx.Status(200)
 			tmpl, err := template.New("htmlTest").Parse(htmlTmpl)
 			if err != nil {
-				logrus.Error(err)
+				LOGGER.Error(err)
 				ctx.JSON(500, gin.H{"err": err.Error()})
 				return
 			}
@@ -535,8 +668,8 @@ func main() {
 			ctx.JSON(200, channelUpdateSchedule.GetSchedule())
 		}
 	})
-	logrus.Infof("web2rss 开始服务: %d",os.Getpid())
+	LOGGER.Infof("web2rss 开始服务: %d",os.Getpid())
 	if err = route.Run(BASE_CONF.Addr); err != nil {
-		logrus.Fatal(err)
+		LOGGER.Fatal(err)
 	}
 }

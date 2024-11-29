@@ -195,7 +195,7 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 
 func checkHealth() (int,error){
 	respBody := CmdResponseDto{}
-	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/health").
+	_, _, errs := gorequest.New().Get("http://"+BASE_CONF.Addr+"/health").
 		Set("Content-Type", "application/json").
 		EndStruct(&respBody)
 	if len(errs) > 0{

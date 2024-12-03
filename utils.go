@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -156,4 +158,9 @@ func runGolangPlugin(pluginPath,addr string)(map[string]interface{},error){
 		return data,err
 	}
 	return nil,fmt.Errorf("插件加载异常：未实现`function GetContent(addr string) [string,err]`方法")
+}
+
+func MD5Hash(text string) string {
+	hash := md5.Sum([]byte(text))
+	return hex.EncodeToString(hash[:])
 }

@@ -509,7 +509,7 @@ func main() {
 			LOGGER.Error(err)
 			return
 		}
-		connKey := fmt.Sprintf("%v",conn)
+		connKey := MD5Hash(fmt.Sprintf("%v",conn))
 		LOGGER.Infof("add websoket client: %s",connKey)
 		LOGGER.AddWriter(connKey,conn)
 		defer func(){

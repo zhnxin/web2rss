@@ -156,8 +156,9 @@ func runGolangPlugin(pluginPath,addr string)(map[string]interface{},error){
 		data := map[string]interface{}{}
 		err := json.Unmarshal([]byte(retV.String()),&data)
 		return data,err
+	}else{
+		return nil,fmt.Errorf("插件执行异常：GetContent 返回值异常：%s",ret.String())
 	}
-	return nil,fmt.Errorf("插件加载异常：未实现`function GetContent(addr string) [string,err]`方法")
 }
 
 func MD5Hash(text string) string {

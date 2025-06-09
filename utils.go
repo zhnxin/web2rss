@@ -145,13 +145,17 @@ func runGolangPlugin(pluginPath,addr string)(map[string]interface{},error){
 	}
 	if err := L.CallByParam(lua.P{
 		Fn: L.GetGlobal("GetContent"),
-		NRet: 1,
+		NRet: 2,
 		Protect: true,
 		}, lua.LString(addr)); err != nil {
 		return nil,err
 	}
-	ret := L.Get(-1) 
+	ret := L.Get(1) 
+	ret_err := L.Get(2)
 	L.Pop(1)
+	if ret_err != lua.LNil {
+		return nil,fmt.Errorf("插件执行异常：%s",ret_err.String())
+	}
 	if retV,ok := ret.(lua.LString);ok{
 		data := map[string]interface{}{}
 		err := json.Unmarshal([]byte(retV.String()),&data)

@@ -30,13 +30,13 @@ var (
 	CONF_DIR     = ".config"
 	USER_DIR     string
 	BASE_CONF    *BaseConfig
-	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update","ws","log", "test")
+	Cmd          = kingpin.Arg("command", "action comand").Required().Enum("start", "stop", "status", "reload", "update", "ws", "log", "test")
 	CHANNEL_NAME = kingpin.Arg("channel", "command channel target").Default("").String()
 	OutputFile   = kingpin.Flag("output", "test output file path").Default("").Short('o').String()
-	WS_UPGRADER = websocket.Upgrader{
+	WS_UPGRADER  = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-	   }
+	}
 )
 
 const SOCKET_FILE = ".web2rss.socket"
@@ -47,26 +47,26 @@ type (
 		channelMap map[string]*ChannelConf
 	}
 	BaseConfig struct {
-		Addr      string
-		Token     string
+		Addr       string
+		Token      string
 		AdminToken string
-		ConfigDir string
-		userDir   string
-		Period    int
-		HttpProxy string
-		LogLevel  string
+		ConfigDir  string
+		userDir    string
+		Period     int
+		HttpProxy  string
+		LogLevel   string
 	}
 	CmdSignal struct {
 		Channel string
 	}
 	CmdResponseDto struct {
-		ErrCode int `json:"err_code"`
+		ErrCode int    `json:"err_code"`
 		Message string `json:"message"`
-		Data int `json:"data"`
+		Data    int    `json:"data"`
 	}
-	CmdRequestDto struct{
-		Cmd string `json:"cmd"`
-		Args string `json:"args"`
+	CmdRequestDto struct {
+		Cmd   string `json:"cmd"`
+		Args  string `json:"args"`
 		Token string `json:"token"`
 	}
 )
@@ -150,10 +150,6 @@ func (conf *Config) LoadConfig(dir string, target string) {
 				LOGGER.Error(err)
 				return
 			}
-			if err != nil {
-				LOGGER.Error(err)
-				continue
-			}
 			LOGGER.Infof("load config file: %s", f.Name())
 			conf.Channel = append(conf.Channel, &cconf)
 		}
@@ -193,35 +189,35 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 
 }
 
-func checkHealth() (int,error){
+func checkHealth() (int, error) {
 	respBody := CmdResponseDto{}
 	_, _, errs := gorequest.New().Get("http://"+BASE_CONF.Addr+"/health").
 		Set("Content-Type", "application/json").
 		EndStruct(&respBody)
-	if len(errs) > 0{
-		return 0,errs[0]
+	if len(errs) > 0 {
+		return 0, errs[0]
 	}
-	return respBody.Data,nil
+	return respBody.Data, nil
 }
-func do_command(cmd string,args string)(CmdResponseDto,error){
+func do_command(cmd string, args string) (CmdResponseDto, error) {
 	cmdBody := CmdRequestDto{
-		Cmd: cmd,
-		Args: args,
+		Cmd:   cmd,
+		Args:  args,
 		Token: BASE_CONF.AdminToken,
 	}
 	respBody := CmdResponseDto{}
 	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/web2rss/signal").
-			Set("Content-Type", "application/json").
-			Send(cmdBody).
-			EndStruct(&respBody)
+		Set("Content-Type", "application/json").
+		Send(cmdBody).
+		EndStruct(&respBody)
 	var err error
-	if len(errs) > 0{
+	if len(errs) > 0 {
 		err = errs[0]
 	}
-	return respBody,err
+	return respBody, err
 }
 
-func handleWSClient(){
+func handleWSClient() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
@@ -249,8 +245,8 @@ func handleWSClient(){
 	}()
 	scanner := bufio.NewScanner(os.Stdin)
 	inputChannel := make(chan string)
-	go func(){
-		for scanner.Scan(){
+	go func() {
+		for scanner.Scan() {
 			inputChannel <- scanner.Text()
 		}
 	}()
@@ -369,25 +365,25 @@ func main() {
 		}
 		return
 	case "status":
-		pid,err := checkHealth()
+		pid, err := checkHealth()
 		if err != nil {
 			fmt.Println("web2rss is not alive")
 			os.Exit(1)
-		}else{
-			logrus.Infof("PID: %d",pid)
+		} else {
+			logrus.Infof("PID: %d", pid)
 		}
-		return	
-	case "ws","log":
+		return
+	case "ws", "log":
 		handleWSClient()
 		return
 	default:
-		resp,err := do_command(*Cmd,*CHANNEL_NAME)
-		if err != nil{
-			LOGGER.Fatalf("%v",err)
-		}else{
-			if(resp.ErrCode != 0){
-				LOGGER.Fatalf("%s",resp.Message)
-			}else{
+		resp, err := do_command(*Cmd, *CHANNEL_NAME)
+		if err != nil {
+			LOGGER.Fatalf("%v", err)
+		} else {
+			if resp.ErrCode != 0 {
+				LOGGER.Fatalf("%s", resp.Message)
+			} else {
 				LOGGER.Info(resp.Message)
 			}
 		}
@@ -446,7 +442,7 @@ func main() {
 			}
 		}
 	}()
-	func_reload := func(channelList string) error{
+	func_reload := func(channelList string) error {
 		for _, channelName := range strings.Split(channelList, ",") {
 			CONFIG.LoadConfig(BASE_CONF.ConfigDir, channelName)
 			if err = CONFIG.Check(repository); err != nil {
@@ -455,18 +451,18 @@ func main() {
 			repository.ClearCache(channelName)
 			updateChannel <- CmdSignal{Channel: channelName}
 		}
-		return nil;
+		return nil
 	}
-	func_update := func(channelList string){
+	func_update := func(channelList string) {
 		for _, channelName := range strings.Split(channelList, ",") {
 			updateChannel <- CmdSignal{Channel: channelName}
 		}
 	}
-	func_stop := func(){
-			time.Sleep(time.Microsecond * 100)
-			LOGGER.Infof("web2rss(%d): 停止服务",os.Getpid())
-			os.Exit(0)
-		}
+	func_stop := func() {
+		time.Sleep(time.Microsecond * 100)
+		LOGGER.Infof("web2rss(%d): 停止服务", os.Getpid())
+		os.Exit(0)
+	}
 	gin.SetMode("release")
 	gin.DefaultWriter = LOGGER.Writer()
 	route := gin.Default()
@@ -475,10 +471,10 @@ func main() {
 			_ = ctx.AbortWithError(403, fmt.Errorf("token is not match"))
 		}
 	})
-	route.GET("health", func(ctx *gin.Context){
-		ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+	route.GET("health", func(ctx *gin.Context) {
+		ctx.JSON(200, gin.H{"err_code": 0, "message": "ok", "data": os.Getpid()})
 	})
-	route.PUT("web2rss/signal", func(ctx *gin.Context){
+	route.PUT("web2rss/signal", func(ctx *gin.Context) {
 		reqBody := CmdRequestDto{}
 		err := ctx.BindJSON(&reqBody)
 		if err != nil {
@@ -492,32 +488,32 @@ func main() {
 				_ = ctx.AbortWithError(400, err)
 				return
 			}
-			ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+			ctx.JSON(200, gin.H{"err_code": 0, "message": "ok", "data": os.Getpid()})
 		case "update":
 			func_update(reqBody.Args)
-			ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+			ctx.JSON(200, gin.H{"err_code": 0, "message": "ok", "data": os.Getpid()})
 		case "stop":
 			go func_stop()
-			ctx.JSON(200, gin.H{"err_code":0,"message":"ok","data":os.Getpid()})
+			ctx.JSON(200, gin.H{"err_code": 0, "message": "ok", "data": os.Getpid()})
 		default:
-			ctx.JSON(400, gin.H{"err_code":400,"message":"unknown cmd","data":os.Getpid()})
+			ctx.JSON(400, gin.H{"err_code": 400, "message": "unknown cmd", "data": os.Getpid()})
 		}
 	})
-	route.GET("web2rss/ws",func(ctx *gin.Context) {
+	route.GET("web2rss/ws", func(ctx *gin.Context) {
 		conn, err := WS_UPGRADER.Upgrade(ctx.Writer, ctx.Request, nil)
 		if err != nil {
 			LOGGER.Error(err)
 			return
 		}
-		connKey := MD5Hash(fmt.Sprintf("%v",conn))
-		LOGGER.Infof("add websoket client: %s",connKey)
-		LOGGER.AddWriter(connKey,conn)
-		defer func(){
+		connKey := MD5Hash(fmt.Sprintf("%v", conn))
+		LOGGER.Infof("add websoket client: %s", connKey)
+		LOGGER.AddWriter(connKey, conn)
+		defer func() {
 			LOGGER.RemoveWriter(connKey)
 			conn.Close()
-			LOGGER.Infof("close websoket client: %s",connKey)
+			LOGGER.Infof("close websoket client: %s", connKey)
 		}()
-		for{
+		for {
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -526,42 +522,42 @@ func main() {
 				return
 			}
 			cmd := string(msg)
-			if cmd == ""{
+			if cmd == "" {
 				conn.WriteMessage(websocket.TextMessage, []byte(">> cmd is empty\n"))
 				continue
 			}
-			cmdargs := strings.Split(cmd," ")
+			cmdargs := strings.Split(cmd, " ")
 			cmd = cmdargs[0]
 			args := ""
-			if len(cmdargs) > 1{
+			if len(cmdargs) > 1 {
 				args = cmdargs[1]
 			}
 			switch cmd {
-				case "reload","r":
-					err :=func_reload(args)
-					if err!=nil{
-						_ = ctx.AbortWithError(400, err)
-						conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> 重新加载配置异常: %v\n",err)))
-					}else{
-						conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
-					}
-				case "update","u":
-					func_update(args)
+			case "reload", "r":
+				err := func_reload(args)
+				if err != nil {
+					_ = ctx.AbortWithError(400, err)
+					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> 重新加载配置异常: %v\n", err)))
+				} else {
 					conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
-				case "stop":
-					go func_stop()
-					conn.WriteMessage(websocket.CloseMessage, []byte{})
-					conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
-					return
-				case "alive","status":
-					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> pid: %d\n",os.Getpid())))
-				case "exit":
-					conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-					return
-				default:
-					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> cmd %s not support\n", cmd)))
+				}
+			case "update", "u":
+				func_update(args)
+				conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
+			case "stop":
+				go func_stop()
+				conn.WriteMessage(websocket.CloseMessage, []byte{})
+				conn.WriteMessage(websocket.TextMessage, []byte(">> ok\n"))
+				return
+			case "alive", "status":
+				conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> pid: %d\n", os.Getpid())))
+			case "exit":
+				conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				return
+			default:
+				conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(">> cmd %s not support\n", cmd)))
 			}
-		}		
+		}
 	})
 
 	route.GET("/rss/:channel", func(ctx *gin.Context) {
@@ -636,14 +632,14 @@ func main() {
 			_ = ctx.AbortWithError(500, err)
 			return
 		}
-		item, err := channel.FindByMk(ctx.Param("channel"),idStr)
+		item, err := channel.FindByMk(ctx.Param("channel"), idStr)
 		if err != nil {
 			_ = ctx.AbortWithError(500, err)
 			return
 		}
 		if item.Id == 0 {
 			ctx.Status(404)
-			ctx.Writer.WriteString(fmt.Sprintf(itemNotFoundPage, channel.Rule.channel,channel.Desc.Title))
+			ctx.Writer.WriteString(fmt.Sprintf(itemNotFoundPage, channel.Rule.channel, channel.Desc.Title))
 			return
 		}
 		tmpl, err := template.New("itemDetailHtml").Parse(itemDetailHtml)
@@ -668,7 +664,7 @@ func main() {
 			ctx.JSON(200, channelUpdateSchedule.GetSchedule())
 		}
 	})
-	LOGGER.Infof("web2rss 开始服务: %d",os.Getpid())
+	LOGGER.Infof("web2rss 开始服务: %d", os.Getpid())
 	if err = route.Run(BASE_CONF.Addr); err != nil {
 		LOGGER.Fatal(err)
 	}

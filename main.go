@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -15,8 +16,8 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/imroc/req/v3"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
 	common "github.com/zhnxin/common-go"
 	"github.com/zouyx/agollo/v3/component/log"
@@ -37,6 +38,7 @@ var (
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
+	SELF_CLIENT *req.Client
 )
 
 const SOCKET_FILE = ".web2rss.socket"
@@ -68,6 +70,11 @@ type (
 		Cmd   string `json:"cmd"`
 		Args  string `json:"args"`
 		Token string `json:"token"`
+	}
+	ChannelStatus struct {
+		Item   string    `json:"item"`
+		T      time.Time `json:"t"`
+		Update bool    `json:"status"`
 	}
 )
 
@@ -190,30 +197,31 @@ func (conf *BaseConfig) LoadConfig(confFile, addr, confDir, token string) {
 }
 
 func checkHealth() (int, error) {
+	if SELF_CLIENT == nil {
+		SELF_CLIENT = req.NewClient()
+	}
 	respBody := CmdResponseDto{}
-	_, _, errs := gorequest.New().Get("http://"+BASE_CONF.Addr+"/health").
-		Set("Content-Type", "application/json").
-		EndStruct(&respBody)
-	if len(errs) > 0 {
-		return 0, errs[0]
+	_, err := SELF_CLIENT.R().SetHeader("Content-Type", "application/json").SetSuccessResult(&respBody).
+		Get("http://" + BASE_CONF.Addr + "/health")
+	if err != nil {
+		return 0, err
 	}
 	return respBody.Data, nil
 }
 func do_command(cmd string, args string) (CmdResponseDto, error) {
+	if SELF_CLIENT == nil {
+		SELF_CLIENT = req.NewClient()
+	}
 	cmdBody := CmdRequestDto{
 		Cmd:   cmd,
 		Args:  args,
 		Token: BASE_CONF.AdminToken,
 	}
 	respBody := CmdResponseDto{}
-	_, _, errs := gorequest.New().Put("http://"+BASE_CONF.Addr+"/web2rss/signal").
-		Set("Content-Type", "application/json").
-		Send(cmdBody).
-		EndStruct(&respBody)
-	var err error
-	if len(errs) > 0 {
-		err = errs[0]
-	}
+	_, err := SELF_CLIENT.R().
+		SetBody(cmdBody).
+		SetHeader("Content-Type", "application/json").SetSuccessResult(&respBody).
+		Put("http://" + BASE_CONF.Addr + "/web2rss/signal")
 	return respBody, err
 }
 
@@ -339,6 +347,13 @@ func main() {
 		for i, d := range items {
 			itemList[i] = *d
 		}
+		output, err := json.Marshal(itemList)
+		if err != nil {
+			LOGGER.Error(err)
+			return
+		}
+		LOGGER.Infoln("生成条目：")
+		LOGGER.Infoln(string(output))
 		rawBody, err := cconf.RssRenderItem(itemList)
 		if err != nil {
 			LOGGER.Error(err)
@@ -425,20 +440,26 @@ func main() {
 		for targetChannel := range channelUpdateSchedule.Chan() {
 			channelName := targetChannel.(string)
 			channelConf, ok := CONFIG.Get(channelName)
-			if ok {
-				if channelConf.DBless || channelConf.DisableUpdate {
-					continue
+			if !ok {
+				continue
+			}
+			if channelConf.DBless || channelConf.DisableUpdate {
+				continue
+			}
+			if channelConf.Rule.isRunning() {
+				LOGGER.Infof("channel %s is running, skip this schedule", channelName)
+				channelUpdateSchedule.Add(time.Now().Add(time.Duration(BASE_CONF.Period)*time.Second), channelName)
+				continue
+			}
+			go func(c *ChannelConf) {
+				if err := c.Update(); err != nil {
+					LOGGER.Errorf("update item for %s:%v", c.Desc.Title, err)
 				}
-				go func(c *ChannelConf) {
-					if err := c.Update(); err != nil {
-						LOGGER.Errorf("update item for %s:%v", c.Desc.Title, err)
-					}
-				}(channelConf)
-				if channelConf.Period > 0 {
-					channelUpdateSchedule.Add(time.Now().Add(time.Duration(channelConf.Period)*time.Second), channelName)
-				} else {
-					channelUpdateSchedule.Add(time.Now().Add(time.Duration(BASE_CONF.Period)*time.Second), channelName)
-				}
+			}(channelConf)
+			if channelConf.Period > 0 {
+				channelUpdateSchedule.Add(time.Now().Add(time.Duration(channelConf.Period)*time.Second), channelName)
+			} else {
+				channelUpdateSchedule.Add(time.Now().Add(time.Duration(BASE_CONF.Period)*time.Second), channelName)
 			}
 		}
 	}()
@@ -651,6 +672,21 @@ func main() {
 		_ = tmpl.Execute(ctx.Writer, item)
 	})
 	route.GET("/schedule", func(ctx *gin.Context) {
+		scheduleList := channelUpdateSchedule.GetSchedule()
+		channelInfoList := make([]ChannelStatus, len(scheduleList))
+		for i, ch := range scheduleList {
+			channelName := ch.Item.(string)
+			channelConf, ok := CONFIG.Get(channelName)
+			update := false
+			if ok && channelConf.Rule.isRunning() {
+				update = true
+			}
+			channelInfoList[i] = ChannelStatus{
+				Item:   channelName,
+				T:      ch.T,
+				Update: update,
+			}
+		}
 		if strings.Contains(ctx.GetHeader("Accept"), "text/html") {
 			ctx.Status(200)
 			tmpl, err := template.New("htmlTest").Parse(htmlTmpl)
@@ -659,9 +695,9 @@ func main() {
 				ctx.JSON(500, gin.H{"err": err.Error()})
 				return
 			}
-			_ = tmpl.Execute(ctx.Writer, channelUpdateSchedule.GetSchedule())
+			_ = tmpl.Execute(ctx.Writer, channelInfoList)
 		} else {
-			ctx.JSON(200, channelUpdateSchedule.GetSchedule())
+			ctx.JSON(200, channelInfoList)
 		}
 	})
 	LOGGER.Infof("web2rss 开始服务: %d", os.Getpid())

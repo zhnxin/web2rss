@@ -15,8 +15,7 @@ const htmlTmpl = `<!DOCTYPE html>
             width: 100%;
         }
 
-        td,
-        th {
+        td,th {
             border: 1px solid #dddddd;
             text-align: left;
             padding: 8px;
@@ -25,6 +24,31 @@ const htmlTmpl = `<!DOCTYPE html>
         tr:nth-child(even) {
             background-color: #dddddd;
         }
+        .loading {
+            width: 15px;
+            height: 15px;
+            border: 2px solid #5b5656ff;
+            border-top-color: transparent;
+            border-radius: 100%;
+
+            animation: circle infinite 0.75s linear;
+        }
+
+        @keyframes circle {
+            0% {
+                transform: rotate(0);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        .completed {
+            width: 15px;
+            height: 15px;
+            border: 2px solid #4CAF50;
+            border-radius: 100%;
+        }
+        
     </style>
 </head>
 
@@ -32,13 +56,15 @@ const htmlTmpl = `<!DOCTYPE html>
     <table>
         <thead>
             <tr>
-                <th>item</th>
+                <th>频道</th>
+                <th>状态</th>
                 <th>time</th>
             </tr>
         </thead>
         <tbody>
             {{range .}}<tr>
                 <td> <a href='/html/{{.Item}}' >{{.Item}}</a></td>
+                <td>{{if .Update}}<div class="loading"></div>{{else}}<div class="completed"></div>{{end}}</td>
                 <td>{{.T.Format "2006-01-02T15:04:05Z07:00"}}</td>
             </tr>
             {{end}}
@@ -47,7 +73,6 @@ const htmlTmpl = `<!DOCTYPE html>
 </body>
 
 </html>`
-
 const channelTableHtml = `
 <!DOCTYPE html>
 <html lang="en">

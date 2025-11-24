@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os/user"
 	"regexp"
 	"testing"
 )
@@ -27,4 +28,23 @@ func TestCurrentTimeDesc(t *testing.T){
 	}
 	testT("2021-8-4")
 	testT("2021-8-19")
+}
+
+func TestGenerateItem(t *testing.T){
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	rule,err := loadChanalConf(u.HomeDir+"/.config/web2rss/conf/3dm.toml")
+	if err !=nil{
+		t.Fatal(err.Error())
+		return
+	}
+	item,err := rule.Rule.GenerateItem()
+	if err !=nil{
+		t.Fatal(err.Error())
+		return
+	}
+	t.Logf("item:%+v",item)
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -135,8 +136,11 @@ func generateTemplate(tempName, tempContext string) (*template.Template, error) 
 	}).Parse(tempContext)
 }
 
-func runGolangPlugin(pluginPath,addr string)(map[string]interface{},error){
+func runGolangPlugin(pluginPath,addr string,ctx context.Context)(map[string]interface{},error){
 	L := lua.NewState()
+	if ctx != nil {
+		L.SetContext(ctx)
+	}
 	defer L.Close()
 	libs.Preload(L)
 	query.Preload(L)

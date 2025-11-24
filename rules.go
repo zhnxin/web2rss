@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"regexp"
@@ -10,10 +11,11 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/imroc/req/v3"
+	"github.com/panjf2000/ants/v2"
+
 	"github.com/Masterminds/sprig"
 	"github.com/PuerkitoBio/goquery"
-	ants "github.com/panjf2000/ants/v2"
-	"github.com/parnurzeal/gorequest"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
@@ -53,13 +55,13 @@ func SetProxy(proxy string) {
 
 type (
 	ChannelConf struct {
-		ItemCount     int
-		Period        int
-		DBless        bool
-		DisableUpdate bool
+		ItemCount        int
+		Period           int
+		DBless           bool
+		DisableUpdate    bool
 		DisableImgSrcFix bool
-		Desc          FeedDesc
-		Rule          Rule
+		Desc             FeedDesc
+		Rule             Rule
 	}
 	FeedDesc struct {
 		Title       string
@@ -71,6 +73,10 @@ type (
 		Link        string
 	}
 	Rule struct {
+		ctx                 context.Context
+		cancel              context.CancelFunc
+		client              *req.Client
+		extraClient         *req.Client
 		GroutineCount       int
 		Encoding            string
 		TocUrl              string
@@ -239,26 +245,35 @@ func (t *ItemTemplate) ToTempalte(templateName string) (*template.Template, erro
 	return generateTemplate(templateName, templateText)
 }
 
-func (r *Rule) generateReqClient(url string, isExtraReq bool) *gorequest.SuperAgent {
-	req := gorequest.New()
-	if !r.NoProxy {
-		req = req.Proxy(proxyUrl)
-	}
-	req = req.Get(url)
+func (r *Rule) doGet(url string, isExtraReq bool) (*req.Response, error) {
+	var request *req.Request
 	if isExtraReq {
-		if len(r.ExtraSourceHeaders) > 0 {
-			for k, v := range r.ExtraSourceHeaders {
-				req = req.Set(k, v)
+		if r.extraClient == nil {
+			r.extraClient = req.NewClient()
+			if !r.NoProxy && proxyUrl != "" {
+				r.extraClient.SetProxyURL(proxyUrl)
+			}
+			if len(r.ExtraSourceHeaders) > 0 {
+				r.extraClient.SetCommonHeaders(r.ExtraSourceHeaders)
 			}
 		}
+		request = r.extraClient.R()
 	} else {
-		if len(r.Headers) > 0 {
-			for k, v := range r.Headers {
-				req = req.Set(k, v)
+		if r.client == nil {
+			r.client = req.NewClient()
+			if !r.NoProxy && proxyUrl != "" {
+				r.client.SetProxyURL(proxyUrl)
+			}
+			if len(r.Headers) > 0 {
+				r.client.SetCommonHeaders(r.Headers)
 			}
 		}
+		request = r.client.R()
 	}
-	return req
+	if r.isRunning() {
+		request.SetContext(r.newContext())
+	}
+	return request.Get(url)
 }
 
 func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
@@ -271,10 +286,9 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 		}
 	}
 	var doc *goquery.Document
-	req := r.generateReqClient(tocUrl, false)
-	res, _, errs := req.End()
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("request to toc url fail:%v", errs)
+	res, err := r.doGet(tocUrl, false)
+	if err != nil {
+		return nil, fmt.Errorf("request to toc url fail:%v", err)
 	}
 
 	switch strings.ToLower(r.Encoding) {
@@ -317,21 +331,20 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 					LOGGER.Error(err)
 				} else {
 					if len(r.ExtraKeyParsePlugin) > 0 {
-						extraItem, err := runGolangPlugin(r.ExtraKeyParsePlugin, tpl.String())
+						extraItem, err := runGolangPlugin(r.ExtraKeyParsePlugin, tpl.String(), r.newContext())
 						if err != nil {
 							LOGGER.Error(err)
 							return
 						}
-						if len(extraItem) > 0{
+						if len(extraItem) > 0 {
 							for k, v := range extraItem {
 								item[k] = v
 							}
 						}
 					} else {
-						extraReq := r.generateReqClient(tpl.String(), true)
-						extraRes, _, errs := extraReq.End()
-						if len(errs) > 0 {
-							LOGGER.Error(errs)
+						extraRes, err := r.doGet(tpl.String(), true)
+						if err != nil {
+							LOGGER.Error(err)
 							return
 						} else {
 							var extraDoc *goquery.Document
@@ -373,8 +386,43 @@ func (r *Rule) spideToc(tocUrl string) (items []*Item, err error) {
 	wait.Wait()
 	return
 }
+func (r *Rule) newContext() context.Context {
+	if r.isRunning() {
+		ctx, _ := context.WithCancel(r.ctx)
+		return ctx
+	}
+	return nil
+}
+func (r *Rule) isRunning() bool {
+	if r.ctx == nil {
+		return false
+	}
+	select {
+	case <-r.ctx.Done():
+		return false
+	default:
+		return true
+	}
+}
+
+func (r *Rule) Cancel() {
+	if r.cancel == nil || r.ctx == nil {
+		return
+	}
+	select {
+	case <-r.ctx.Done():
+		return
+	default:
+		r.cancel()
+	}
+}
 
 func (r *Rule) GenerateItem() ([]*Item, error) {
+	if r.isRunning() {
+		return nil, fmt.Errorf("任务正在运行中，请稍后再试")
+	}
+	r.ctx, r.cancel = context.WithCancel(context.Background())
+	defer r.cancel()
 	tocSet := map[string]bool{r.TocUrl: true}
 	for _, u := range r.TocUrlList {
 		tocSet[u] = true
@@ -396,6 +444,10 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 		var e error
 		var res []*Item
 		for i := 0; i < 5; i++ {
+			if !r.isRunning() {
+				e = fmt.Errorf("任务被取消")
+				break
+			}
 			res, e = r.spideToc(url)
 			if e == nil {
 				break
@@ -410,9 +462,9 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			err   error
 		}{items: res, err: e}
 	})
-	wait.Add(1)
 	go func() {
-		defer wait.Done()
+		defer p.Release()
+		defer close(resChan)
 		for tocUrl := range tocSet {
 			if tocUrl == "" {
 				continue
@@ -420,13 +472,9 @@ func (r *Rule) GenerateItem() ([]*Item, error) {
 			wait.Add(1)
 			_ = p.Invoke(tocUrl)
 		}
-	}()
-	defer p.Release()
-	err := []error{}
-	go func() {
 		wait.Wait()
-		close(resChan)
 	}()
+	err := []error{}
 	for res := range resChan {
 		if res.err != nil {
 			err = append(err, res.err)
@@ -488,8 +536,8 @@ func (c *ChannelConf) FindById(id int64) (Item, error) {
 	return item, err
 }
 
-func (c *ChannelConf) FindByMk(channel,key string) (Item,error){
-	item,err := c.Rule.repository.FindByMk(channel, key)
+func (c *ChannelConf) FindByMk(channel, key string) (Item, error) {
+	item, err := c.Rule.repository.FindByMk(channel, key)
 	if err == nil {
 		c.injectHttpElementSrcAddrWithHostForItem(&item)
 	}
@@ -528,11 +576,11 @@ func (c *ChannelConf) ToRss(searchKey string, pageSize, pageIndex int) ([]byte, 
 	return c.RssRenderItem(items)
 }
 func (c *ChannelConf) injectHttpElementSrcAddrWithHostForItem(item *Item) {
-	if item == nil || item.Description == nil || len(item.Description.Content) < 1{
+	if item == nil || item.Description == nil || len(item.Description.Content) < 1 {
 		return
 	}
 	toReplace := map[string]bool{}
-	if ! c.DisableImgSrcFix{
+	if !c.DisableImgSrcFix {
 		matches := src_addr_pattern.FindAllStringSubmatch(item.Description.String(), -1)
 		if len(matches) > 0 {
 			for _, strList := range matches {

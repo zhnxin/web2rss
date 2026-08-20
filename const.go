@@ -53,23 +53,90 @@ const htmlTmpl = `<!DOCTYPE html>
 </head>
 
 <body>
+    <button onclick="fetchData()">刷新</button>
+    <button onclick="updateChannel('')">更新</button>
     <table>
         <thead>
             <tr>
                 <th>频道</th>
                 <th>状态</th>
                 <th>time</th>
+                <th>操作</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="content">
             {{range .}}<tr>
                 <td> <a href='/html/{{.Item}}' >{{.Item}}</a></td>
                 <td>{{if .Update}}<div class="loading"></div>{{else}}<div class="completed"></div>{{end}}</td>
                 <td>{{.T.Format "2006-01-02T15:04:05Z07:00"}}</td>
+                <td><button onclick="updateChannel('{{.Item}}')">更新</button></td>
             </tr>
             {{end}}
         </tbody>
     </table>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script>
+        function fetchData() {
+            axios.get('web2rss', {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            }).then(function (response) {
+                const tbody = document.getElementById('content')
+                tbody.innerHTML = ''
+                console.log(response.data);
+                (response.data.data || []).forEach(function (item) {
+                    const tr = document.createElement('tr')
+
+                    const tdItem = document.createElement('td')
+                    const a = document.createElement('a')
+                    a.href = '/html/' + item.item
+                    a.textContent = item.item
+                    tdItem.appendChild(a)
+                    tr.appendChild(tdItem)
+
+                    const tdStatus = document.createElement('td')
+                    if (item.is_update) {
+                        const divLoading = document.createElement('div')
+                        divLoading.className = 'loading'
+                        tdStatus.appendChild(divLoading)
+                    } else {
+                        const divCompleted = document.createElement('div')
+                        divCompleted.className = 'completed'
+                        tdStatus.appendChild(divCompleted)
+                    }
+                    tr.appendChild(tdStatus)
+
+                    const tdTime = document.createElement('td')
+                    tdTime.textContent = new Date(item.t).toISOString()
+                    tr.appendChild(tdTime)
+
+                    const tdAction = document.createElement('td')
+                    const button = document.createElement('button')
+                    button.textContent = '更新'
+                    button.onclick = function () {
+                        updateChannel(item.item)
+                    }
+                    tdAction.appendChild(button)
+                    tr.appendChild(tdAction)
+
+                    tbody.appendChild(tr)
+                })
+            }).catch(function (error) {
+                console.error('Error fetching data:', error);
+            });
+        }
+        function updateChannel(channel) {
+            axios.put('web2rss/signal', {
+                cmd: "update",args:channel
+            }).then(function (response) {
+                alert('已触发更新:' + channel)
+                fetchData()
+            }).catch(function (error) {
+                alert('更新失败:' + error)
+            });
+        }
+    </script>
 </body>
 
 </html>`
@@ -85,7 +152,8 @@ const channelTableHtml = `
 </head>
 
 <body>
-    <ul>
+    <a href='html' >返回</a>
+    <ul id="content">
         {{range .}}
             <li class="column">
                 <a href="/html/{{.Channel}}/{{.Mk}}">{{.Title}}</a>
